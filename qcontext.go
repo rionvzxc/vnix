@@ -50,14 +50,14 @@ func newContext(hReq *http.Request, hRes http.ResponseWriter, reqParam TValues) 
 	}
 }
 // Param
-func (this *QContext) GetParam(name string) TStrings {
+func (this *QContext) Param(name string) TStrings {
 	if values, exists := this.reqParam[name]; exists {
 		return TStrings(values)
 	}
 	return TStrings{}
 }
 // Query
-func (this *QContext) GetQuery(name string) TStrings {
+func (this *QContext) Query(name string) TStrings {
 	if this.reqQuery == nil {
 		this.reqQuery = TValues(this.httpRequest.URL.Query())
 	}
@@ -67,14 +67,14 @@ func (this *QContext) GetQuery(name string) TStrings {
 	return TStrings{}
 }
 // Header
-func (this *QContext) GetHeader(name string) TStrings {
+func (this *QContext) Header(name string) TStrings {
 	if values, exists := this.reqHeader[http.CanonicalHeaderKey(name)]; exists {
 		return TStrings(values)
 	}
 	return TStrings{}
 }
 // Cookie
-func (this *QContext) GetCookie(name string) TStrings {
+func (this *QContext) Cookie(name string) TStrings {
 	if this.reqCookie == nil {
 		this.reqCookie = make(TValues)
 
@@ -88,7 +88,7 @@ func (this *QContext) GetCookie(name string) TStrings {
 	return TStrings{}
 }
 // GetRaw
-func (this *QContext) GetData() []byte {
+func (this *QContext) Data() []byte {
 	if this.bodyRead {
 		return nil
 	}
@@ -105,7 +105,7 @@ func (this *QContext) GetData() []byte {
 	return rawData
 }
 // GetText
-func (this *QContext) GetText() string {
+func (this *QContext) Text() string {
 	if this.bodyRead {
 		return ""
 	}
@@ -122,7 +122,7 @@ func (this *QContext) GetText() string {
 	return string(rawData)
 }
 // GetJSON
-func (this *QContext) GetJSON(value any) bool {
+func (this *QContext) JSON(value any) bool {
 	if this.bodyRead {
 		return false
 	}
@@ -137,7 +137,7 @@ func (this *QContext) GetJSON(value any) bool {
 	return true
 }
 // BodyForm
-func (this *QContext) GetForm(name string) TStrings {
+func (this *QContext) Form(name string) TStrings {
 	err := this.httpRequest.ParseMultipartForm(32 << 20)
 
 	if (err != nil && err != http.ErrNotMultipart) ||
@@ -152,7 +152,7 @@ func (this *QContext) GetForm(name string) TStrings {
 	return TStrings{}
 }
 // BodyFile
-func (this *QContext) GetFile(name string) *QFile {
+func (this *QContext) File(name string) *QFile {
 	err := this.httpRequest.ParseMultipartForm(32 << 20)
 
 	if err != nil || err != http.ErrNotMultipart || this.httpRequest.MultipartForm == nil {
@@ -168,7 +168,6 @@ func (this *QContext) GetFile(name string) *QFile {
 		fileHeader: files[0],
 	}
 }
-
 // Body
 func (this *QContext) SetData(data []byte) {
 	this.bodyType = bodyTypeRaw
