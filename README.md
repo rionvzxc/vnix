@@ -1,0 +1,58 @@
+# vnix
+
+`vnix` is a lightweight and efficient web framework for Go, designed for building HTTP servers, REST APIs, and web applications. It provides a simple routing API and a context-based approach to handling HTTP requests and responses.
+
+## Installation
+
+```bash
+go get github.com/rionvzxc/vnix
+```
+
+## Features
+
+- Simple and lightweight API
+- HTTP method routing: GET, POST, PUT, DELETE
+- Custom request and response handling
+- Context-based request handling with `QContext`
+- HTTP server management
+- Suitable for building REST APIs and web applications
+
+## Quick Start
+
+```go
+package main
+
+import (
+    "github.com/rionvzxc/vnix"
+)
+
+func main() {
+    app := vnix.New()
+
+    app.GET("/", func(ctx *vnix.QContext) {
+        ctx.SetText("Hello World!")
+    })
+
+    app.Run(":8080")
+}
+```
+
+Run the application:
+
+```bash
+go run main.go
+```
+
+Open http://localhost:8080 to see the result.
+
+## Examples
+
+| Example | Description |
+|---|---|
+| [basic](https://github.com/rionvzxc/vnix/tree/main/examples/basic) | Basic HTTP server |
+| [post](https://github.com/rionvzxc/vnix/tree/main/examples/post) | Handling POST form data |
+| [query_param](https://github.com/rionvzxc/vnix/tree/main/examples/query_param) | Working with query parameters and URL parameters |
+
+## License
+
+See [LICENSE](LICENSE) for details.
