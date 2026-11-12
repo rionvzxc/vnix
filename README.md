@@ -11,7 +11,7 @@ go get github.com/rionvzxc/vnix
 ## Features
 
 - Simple and lightweight API
-- HTTP method routing: GET, POST, PUT, DELETE
+- HTTP method routing: GET, POST, PUT, DELETE, PATCH
 - Custom request and response handling
 - Context-based request handling with `QContext`
 - HTTP server management
@@ -50,6 +50,8 @@ Open http://localhost:8080 to see the result.
 | Example | Description |
 |---|---|
 | [basic](https://github.com/rionvzxc/vnix/tree/main/examples/basic) | Basic HTTP server |
+| [basic2](https://github.com/rionvzxc/vnix/tree/main/examples/basic2) | HTTP server with multiple routes |
+| [basic_group](https://github.com/rionvzxc/vnix/tree/main/examples/basic_group) | Grouping routes with URL prefixes |
 | [post](https://github.com/rionvzxc/vnix/tree/main/examples/post) | Handling POST form data |
 | [query_param](https://github.com/rionvzxc/vnix/tree/main/examples/query_param) | Working with query parameters and URL parameters |
 
