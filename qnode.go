@@ -11,15 +11,16 @@ const (
 )
 
 type QNode struct {
-	name string
-	nodeType TNodeType
-	staticNodes []*QNode
-	dynamicNode *QNode
+	name           string
+	nodeType       TNodeType
+	staticNodes    []*QNode
+	dynamicNode    *QNode
 	handlerFuncMap map[string]THandlerFunc
 }
+
 func newNode(name string, nodeType TNodeType) *QNode {
 	return &QNode{
-		name: name,
+		name:     name,
 		nodeType: nodeType,
 	}
 }
@@ -34,7 +35,7 @@ func (this *QNode) PUT(path string, handler THandlerFunc) *QNode {
 	return this.Handle("PUT", path, handler)
 }
 func (this *QNode) DELETE(path string, handler THandlerFunc) *QNode {
-	return this.Handle("PUT", path, handler)
+	return this.Handle("DELETE", path, handler)
 }
 func (this *QNode) PATCH(path string, handler THandlerFunc) *QNode {
 	return this.Handle("PATCH", path, handler)
@@ -156,7 +157,7 @@ func (this *QNode) getMethodHandler(method string, path string) (*QNode, THandle
 						paramMap = make(TValues)
 					}
 					paramMap[dynamicNode.name] = append(paramMap[dynamicNode.name], path[start:])
-					return currentNode, currentNode.handlerFuncMap[method], paramMap
+					return dynamicNode, dynamicNode.handlerFuncMap[method], paramMap
 				} else {
 					return nil, nil, nil
 				}

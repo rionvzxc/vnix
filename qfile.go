@@ -11,18 +11,27 @@ import (
 type QFile struct {
 	fileHeader *multipart.FileHeader
 }
+
 // Filename
 func (this *QFile) Filename() string {
+	if this.fileHeader == nil {
+		return ""
+	}
 	return this.fileHeader.Filename
 }
+
 // MimeType
 func (this *QFile) MimeType() string {
+	if this.fileHeader == nil {
+		return ""
+	}
 	value, _, err := mime.ParseMediaType(this.fileHeader.Header.Get("Content-Type"))
 	if err != nil {
 		return ""
 	}
 	return value
 }
+
 // Save
 func (this *QFile) Save(path string) error {
 	if this.fileHeader == nil {

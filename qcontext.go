@@ -1,4 +1,3 @@
-
 package vnix
 
 import (
@@ -21,11 +20,11 @@ type QContext struct {
 	httpRequest  *http.Request
 	httpResponse http.ResponseWriter
 
-	reqHeader	http.Header
-	reqQuery     TValues
-	reqCookie    TValues
-	reqParam     TValues
-	reqForm	  TValues
+	reqHeader http.Header
+	reqQuery  TValues
+	reqCookie TValues
+	reqParam  TValues
+	reqForm   TValues
 	bodyRead  bool
 
 	bodyType     tBodyType
@@ -41,14 +40,16 @@ type QContext struct {
 
 func newContext(hReq *http.Request, hRes http.ResponseWriter, reqParam TValues) *QContext {
 	return &QContext{
-		httpRequest: hReq,
+		httpRequest:  hReq,
 		httpResponse: hRes,
-		reqHeader: hReq.Header,
-		reqParam:      reqParam,
+		reqHeader:    hReq.Header,
+		reqParam:     reqParam,
+		resHeader:    make(TValues),
 		statusCode:   http.StatusOK,
 		bodyType:     bodyTypeNone,
 	}
 }
+
 // Param
 func (this *QContext) Param(name string) TStrings {
 	if values, exists := this.reqParam[name]; exists {
@@ -56,6 +57,7 @@ func (this *QContext) Param(name string) TStrings {
 	}
 	return TStrings{}
 }
+
 // Query
 func (this *QContext) Query(name string) TStrings {
 	if this.reqQuery == nil {
@@ -66,6 +68,7 @@ func (this *QContext) Query(name string) TStrings {
 	}
 	return TStrings{}
 }
+
 // Header
 func (this *QContext) Header(name string) TStrings {
 	if values, exists := this.reqHeader[http.CanonicalHeaderKey(name)]; exists {
@@ -73,6 +76,7 @@ func (this *QContext) Header(name string) TStrings {
 	}
 	return TStrings{}
 }
+
 // Cookie
 func (this *QContext) Cookie(name string) TStrings {
 	if this.reqCookie == nil {
@@ -87,6 +91,7 @@ func (this *QContext) Cookie(name string) TStrings {
 	}
 	return TStrings{}
 }
+
 // GetRaw
 func (this *QContext) Data() []byte {
 	if this.bodyRead {
@@ -104,6 +109,7 @@ func (this *QContext) Data() []byte {
 	}
 	return rawData
 }
+
 // GetText
 func (this *QContext) Text() string {
 	if this.bodyRead {
@@ -121,6 +127,7 @@ func (this *QContext) Text() string {
 	}
 	return string(rawData)
 }
+
 // GetJSON
 func (this *QContext) JSON(value any) bool {
 	if this.bodyRead {
@@ -136,6 +143,7 @@ func (this *QContext) JSON(value any) bool {
 	}
 	return true
 }
+
 // BodyForm
 func (this *QContext) Form(name string) TStrings {
 	err := this.httpRequest.ParseMultipartForm(32 << 20)
@@ -151,11 +159,12 @@ func (this *QContext) Form(name string) TStrings {
 	}
 	return TStrings{}
 }
+
 // BodyFile
 func (this *QContext) File(name string) *QFile {
 	err := this.httpRequest.ParseMultipartForm(32 << 20)
 
-	if err != nil || err != http.ErrNotMultipart || this.httpRequest.MultipartForm == nil {
+	if (err != nil && err != http.ErrNotMultipart) || this.httpRequest.MultipartForm == nil {
 		return &QFile{}
 	}
 	this.bodyRead = true
@@ -168,6 +177,7 @@ func (this *QContext) File(name string) *QFile {
 		fileHeader: files[0],
 	}
 }
+
 // Body
 func (this *QContext) SetData(data []byte) {
 	this.bodyType = bodyTypeRaw
@@ -194,10 +204,12 @@ func (this *QContext) SetHeader(header TValues) {
 func (this *QContext) SetCookie(cookies []*TCookie) {
 	this.resCookies = cookies
 }
+
 // Status
 func (this *QContext) StatusCode(code int) {
 	this.statusCode = code
 }
+
 // Send
 func (this *QContext) send() error {
 	writer := this.httpResponse
@@ -213,19 +225,19 @@ func (this *QContext) send() error {
 		body, err = json.Marshal(this.bodyDataJSON)
 
 		if err != nil {
+			http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return err
 		}
 	}
 	header := writer.Header()
 
-	for key := range header {
-		delete(header, key)
-	}
 	for key, values := range http.Header(this.resHeader) {
-		header[key] = values
+		header[http.CanonicalHeaderKey(key)] = append([]string(nil), values...)
 	}
 	for _, cookie := range this.resCookies {
-		http.SetCookie(writer, cookie)
+		if cookie != nil {
+			http.SetCookie(writer, cookie)
+		}
 	}
 	writer.WriteHeader(this.statusCode)
 

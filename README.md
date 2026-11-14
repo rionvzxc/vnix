@@ -54,6 +54,8 @@ Open http://localhost:8080 to see the result.
 | [basic_group](https://github.com/rionvzxc/vnix/tree/main/examples/basic_group) | Grouping routes with URL prefixes |
 | [post](https://github.com/rionvzxc/vnix/tree/main/examples/post) | Handling POST form data |
 | [query_param](https://github.com/rionvzxc/vnix/tree/main/examples/query_param) | Working with query parameters and URL parameters |
+| [methods](https://github.com/rionvzxc/vnix/tree/main/examples/methods) | Handling JSON requests with GET, POST, PUT, PATCH, and DELETE |
+| [file_upload](https://github.com/rionvzxc/vnix/tree/main/examples/file_upload) | Receiving and saving a multipart file upload |
 
 ## License
 

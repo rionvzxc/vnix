@@ -7,7 +7,8 @@ func (this *TCookies) Set(data TCookies) {
 }
 func (this *TCookies) Add(cookies ...TCookie) {
 	for _, cookie := range cookies {
-		*this = append(*this, &cookie)
+		cookieCopy := cookie
+		*this = append(*this, &cookieCopy)
 	}
 }
 func (this *TCookies) Del(name string) {
@@ -16,7 +17,9 @@ func (this *TCookies) Del(name string) {
 	iLast := len(cookies) - 1
 
 	for iCurrent <= iLast {
-		if cookies[iCurrent].Name == name {
+		if cookies[iCurrent] == nil {
+			iCurrent++
+		} else if cookies[iCurrent].Name == name {
 			cookies[iCurrent] = cookies[iLast]
 			cookies[iLast] = nil
 			iLast--
@@ -28,7 +31,7 @@ func (this *TCookies) Del(name string) {
 }
 func (this TCookies) Exist(name string) bool {
 	for _, cookie := range this {
-		if cookie.Name == name {
+		if cookie != nil && cookie.Name == name {
 			return true
 		}
 	}
@@ -36,7 +39,7 @@ func (this TCookies) Exist(name string) bool {
 }
 func (this TCookies) Get(name string) *TCookie {
 	for _, cookie := range this {
-		if cookie.Name == name {
+		if cookie != nil && cookie.Name == name {
 			return cookie
 		}
 	}
@@ -46,7 +49,7 @@ func (this TCookies) GetA(name string) []*TCookie {
 	var result []*TCookie
 
 	for _, cookie := range this {
-		if cookie.Name == name {
+		if cookie != nil && cookie.Name == name {
 			result = append(result, cookie)
 		}
 	}

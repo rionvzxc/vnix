@@ -11,6 +11,7 @@
 /bin/
 /dist/
 /build/
+/.gocache/
 
 # Go workspace
 go.work
