@@ -7,7 +7,7 @@ func main() {
 
 	app.GET("/items/:id", func(ctx *vnix.QContext) {
 		ctx.SetJSON(vnix.TMap{
-			"id":     ctx.Param("id").Str(""),
+			"id":     ctx.Param("id").String(""),
 			"method": "GET",
 		})
 	})
@@ -37,14 +37,14 @@ func main() {
 			return
 		}
 		ctx.SetJSON(vnix.TMap{
-			"id":   ctx.Param("id").Str(""),
+			"id":   ctx.Param("id").String(""),
 			"name": item.Name,
 		})
 	})
 
 	app.PATCH("/items/:id", func(ctx *vnix.QContext) {
 		ctx.SetJSON(vnix.TMap{
-			"id":     ctx.Param("id").Str(""),
+			"id":     ctx.Param("id").String(""),
 			"method": "PATCH",
 		})
 	})

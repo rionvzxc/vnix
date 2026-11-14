@@ -67,7 +67,7 @@ func TestFormReadsURLEncodedData(t *testing.T) {
 	response := httptest.NewRecorder()
 	app := New()
 	app.POST("/", func(ctx *QContext) {
-		ctx.SetText(ctx.Form("name").Str("missing"))
+		ctx.SetText(ctx.Form("name").String("missing"))
 	})
 	(&qHttpHandler{rootNode: app.QNode}).ServeHTTP(response, request)
 
@@ -133,16 +133,16 @@ func TestContextMissingValuesAndEmptyBody(t *testing.T) {
 	request.Body = nil
 	ctx := newContext(request, httptest.NewRecorder(), nil)
 
-	if got := ctx.Param("missing").Str("fallback"); got != "fallback" {
+	if got := ctx.Param("missing").String("fallback"); got != "fallback" {
 		t.Fatalf("missing Param() = %q", got)
 	}
-	if got := ctx.Query("missing").Str("fallback"); got != "fallback" {
+	if got := ctx.Query("missing").String("fallback"); got != "fallback" {
 		t.Fatalf("missing Query() = %q", got)
 	}
-	if got := ctx.Header("X-Missing").Str("fallback"); got != "fallback" {
+	if got := ctx.Header("X-Missing").String("fallback"); got != "fallback" {
 		t.Fatalf("missing Header() = %q", got)
 	}
-	if got := ctx.Cookie("missing").Str("fallback"); got != "fallback" {
+	if got := ctx.Cookie("missing").String("fallback"); got != "fallback" {
 		t.Fatalf("missing Cookie() = %q", got)
 	}
 	if got := ctx.Data(); len(got) != 0 {
@@ -243,9 +243,9 @@ func TestContextReadsQueryHeaderAndCookies(t *testing.T) {
 	app := New()
 	app.GET("/", func(ctx *QContext) {
 		ctx.SetText(strings.Join([]string{
-			ctx.Query("tag").Str("missing"),
-			ctx.Header("X-Token").Str("missing"),
-			ctx.Cookie("session").Str("missing"),
+			ctx.Query("tag").String("missing"),
+			ctx.Header("X-Token").String("missing"),
+			ctx.Cookie("session").String("missing"),
 		}, ":"))
 	})
 	request := httptest.NewRequest(http.MethodGet, "/?tag=go", nil)
