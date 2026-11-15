@@ -11,7 +11,13 @@ import (
 func main() {
 	app := vnix.New()
 	app.POST("/upload", func(ctx *vnix.QContext) {
-		file := ctx.File("file")
+		file, err := ctx.File("file")
+
+		if err != nil {
+			ctx.StatusCode(http.StatusBadRequest)
+			ctx.SetText("Could not read multipart upload")
+			return
+		}
 		filename := filepath.Base(file.Filename())
 
 		if filename == "." || filename == string(filepath.Separator) || filename == "" {

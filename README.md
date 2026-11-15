@@ -56,6 +56,9 @@ Open http://localhost:8080 to see the result.
 | [query_param](https://github.com/rionvzxc/vnix/tree/main/examples/query_param) | Working with query parameters and URL parameters |
 | [methods](https://github.com/rionvzxc/vnix/tree/main/examples/methods) | Handling JSON requests with GET, POST, PUT, PATCH, and DELETE |
 | [file_upload](https://github.com/rionvzxc/vnix/tree/main/examples/file_upload) | Receiving and saving a multipart file upload |
+| [serve_file](https://github.com/rionvzxc/vnix/tree/main/examples/serve_file) | Serving a static file with an automatically detected content type |
+| [file_download](https://github.com/rionvzxc/vnix/tree/main/examples/file_download) | Sending a file as a browser download |
+| [serve_html](https://github.com/rionvzxc/vnix/tree/main/examples/serve_html) | Returning an HTML string with `SetHTML` |
 
 ## License
 

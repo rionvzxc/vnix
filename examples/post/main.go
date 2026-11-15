@@ -7,8 +7,9 @@ import (
 func main() {
 	app := vnix.New()
 	app.POST("/form", func(ctx *vnix.QContext) {
-		id := ctx.Form("id").Int(0)
-		name := ctx.Form("name").String("Unknown")
+		idText := ctx.Form("id", "")
+		name := ctx.Form("name", "Unknown")
+		id := vnix.TString(idText).Int(0)
 
 		ctx.SetTextF("ID: %d\nName: %s", id, name)
 	})

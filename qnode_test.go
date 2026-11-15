@@ -16,7 +16,7 @@ func performRequest(handler http.Handler, method string, path string) *httptest.
 func TestRouteMethodsAndParameters(t *testing.T) {
 	app := New()
 	app.DELETE("/items/:id", func(ctx *QContext) {
-		ctx.SetText(ctx.Param("id").String(""))
+		ctx.SetText(ctx.Param("id", ""))
 	})
 	handler := &qHttpHandler{rootNode: app.QNode}
 
@@ -36,10 +36,10 @@ func TestRouteMethodsAndParameters(t *testing.T) {
 func TestWildcardRoute(t *testing.T) {
 	app := New()
 	app.GET("/assets/*path", func(ctx *QContext) {
-		ctx.SetText(ctx.Param("path").String(""))
+		ctx.SetText(ctx.Param("path", ""))
 	})
 	app.PATCH("/assets/*path", func(ctx *QContext) {
-		ctx.SetText(ctx.Param("path").String("updated"))
+		ctx.SetText(ctx.Param("path", "updated"))
 	})
 	handler := &qHttpHandler{rootNode: app.QNode}
 
@@ -57,7 +57,7 @@ func TestWildcardRoute(t *testing.T) {
 func TestWildcardRouteUsesDefaultParameterName(t *testing.T) {
 	app := New()
 	app.GET("/*", func(ctx *QContext) {
-		ctx.SetText(ctx.Param("wildcard").String(""))
+		ctx.SetText(ctx.Param("wildcard", ""))
 	})
 	response := performRequest(&qHttpHandler{rootNode: app.QNode}, http.MethodGet, "/assets/logo.svg")
 
@@ -110,10 +110,10 @@ func TestGroupedRoutes(t *testing.T) {
 	app := New()
 	api := app.Group("/api")
 	api.GET("/users/:id", func(ctx *QContext) {
-		ctx.SetText(ctx.Param("id").String(""))
+		ctx.SetText(ctx.Param("id", ""))
 	})
 	api.POST("/users/:id", func(ctx *QContext) {
-		ctx.SetText(ctx.Param("id").String(""))
+		ctx.SetText(ctx.Param("id", ""))
 	})
 
 	response := performRequest(&qHttpHandler{rootNode: app.QNode}, http.MethodGet, "/api/users/7")

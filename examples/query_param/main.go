@@ -7,8 +7,8 @@ import (
 func main() {
 	app := vnix.New()
 	app.GET("/param/:id", func(ctx *vnix.QContext) {
-		id := ctx.Param("id").Int(0)
-		name := ctx.Query("name").String("Unknown")
+		id := vnix.TString(ctx.Param("id", "")).Int(0)
+		name := ctx.Query("name", "Unknown")
 
 		ctx.SetTextF("ID: %d\nName: %s", id, name)
 	})

@@ -7,7 +7,7 @@ func main() {
 
 	app.GET("/items/:id", func(ctx *vnix.QContext) {
 		ctx.SetJSON(vnix.TMap{
-			"id":     ctx.Param("id").String(""),
+			"id":     ctx.Param("id", ""),
 			"method": "GET",
 		})
 	})
@@ -16,8 +16,7 @@ func main() {
 		var item struct {
 			Name string `json:"name"`
 		}
-
-		if !ctx.JSON(&item) {
+		if err := ctx.JSON(&item); err != nil {
 			ctx.StatusCode(400)
 			ctx.SetText("Invalid JSON request body")
 			return
@@ -30,21 +29,20 @@ func main() {
 		var item struct {
 			Name string `json:"name"`
 		}
-
-		if !ctx.JSON(&item) {
+		if err := ctx.JSON(&item); err != nil {
 			ctx.StatusCode(400)
 			ctx.SetText("Invalid JSON request body")
 			return
 		}
 		ctx.SetJSON(vnix.TMap{
-			"id":   ctx.Param("id").String(""),
+			"id":   ctx.Param("id", ""),
 			"name": item.Name,
 		})
 	})
 
 	app.PATCH("/items/:id", func(ctx *vnix.QContext) {
 		ctx.SetJSON(vnix.TMap{
-			"id":     ctx.Param("id").String(""),
+			"id":     ctx.Param("id", ""),
 			"method": "PATCH",
 		})
 	})
