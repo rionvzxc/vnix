@@ -10,6 +10,7 @@ const (
 	vNodeWildcard
 )
 
+// QNode represents a route group and its registered HTTP handlers.
 type QNode struct {
 	name           string
 	nodeType       TNodeType
@@ -24,27 +25,41 @@ func newNode(name string, nodeType TNodeType) *QNode {
 		nodeType: nodeType,
 	}
 }
+
+// GET registers handler for GET requests at path.
 func (this *QNode) GET(path string, handler THandlerFunc) *QNode {
 	this.Handle("GET", path, handler)
 	return this
 }
+
+// POST registers handler for POST requests at path.
 func (this *QNode) POST(path string, handler THandlerFunc) *QNode {
 	return this.Handle("POST", path, handler)
 }
+
+// PUT registers handler for PUT requests at path.
 func (this *QNode) PUT(path string, handler THandlerFunc) *QNode {
 	return this.Handle("PUT", path, handler)
 }
+
+// DELETE registers handler for DELETE requests at path.
 func (this *QNode) DELETE(path string, handler THandlerFunc) *QNode {
 	return this.Handle("DELETE", path, handler)
 }
+
+// PATCH registers handler for PATCH requests at path.
 func (this *QNode) PATCH(path string, handler THandlerFunc) *QNode {
 	return this.Handle("PATCH", path, handler)
 }
+
+// Handle registers handler for method at path.
 func (this *QNode) Handle(method string, path string, handler THandlerFunc) *QNode {
 	lastNode := this.Group(path)
 	lastNode.setMethodHandler(method, handler)
 	return lastNode
 }
+
+// Group returns the route group at path, creating missing route nodes.
 func (this *QNode) Group(path string) *QNode {
 	var part string
 	currentNode := this

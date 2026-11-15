@@ -8,11 +8,12 @@ import (
 	"os"
 )
 
+// QFile provides access to an uploaded multipart file.
 type QFile struct {
 	fileHeader *multipart.FileHeader
 }
 
-// Filename
+// Filename returns the uploaded file's original name.
 func (this *QFile) Filename() string {
 	if this.fileHeader == nil {
 		return ""
@@ -20,7 +21,7 @@ func (this *QFile) Filename() string {
 	return this.fileHeader.Filename
 }
 
-// MimeType
+// MimeType returns the uploaded file's media type, or an empty string if unavailable.
 func (this *QFile) MimeType() string {
 	if this.fileHeader == nil {
 		return ""
@@ -32,7 +33,7 @@ func (this *QFile) MimeType() string {
 	return value
 }
 
-// Save
+// Save writes the uploaded file contents to path.
 func (this *QFile) Save(path string) error {
 	if this.fileHeader == nil {
 		return http.ErrMissingFile
