@@ -19,10 +19,9 @@ func TestTCookiesOperations(t *testing.T) {
 	if got := cookies.Get("second"); got == nil || got.Value != "two" {
 		t.Fatalf("Get(second) = %#v", got)
 	}
-	if got := cookies.GetA("first"); len(got) != 2 || got[0].Value != "one" || got[1].Value != "three" {
-		t.Fatalf("GetA(first) = %#v", got)
+	if got := cookies.GetAll("first"); len(got) != 2 || got[0].Value != "one" || got[1].Value != "three" {
+		t.Fatalf("GetAll(first) = %#v", got)
 	}
-
 	cookies.Set(TCookies{nil, {Name: "remove", Value: "1"}, {Name: "keep", Value: "2"}, {Name: "remove", Value: "3"}})
 	cookies.Del("remove")
 	if len(cookies) != 2 || !cookies.Exist("keep") {

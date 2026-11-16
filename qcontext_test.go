@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -22,11 +23,9 @@ type failingRequestBody struct{}
 func (failingRequestBody) Read([]byte) (int, error) {
 	return 0, errors.New("read failed")
 }
-
 func (failingRequestBody) Close() error {
 	return nil
 }
-
 func TestSetJSONInitializesHeaders(t *testing.T) {
 	app := New()
 	app.GET("/", func(ctx *QContext) {
@@ -49,7 +48,23 @@ func TestSetJSONInitializesHeaders(t *testing.T) {
 		t.Fatalf("JSON body = %#v", body)
 	}
 }
-
+func TestSetJSONAcceptsAnyValue(t *testing.T) {
+	type responseData struct {
+		Message string `json:"message"`
+	}
+	app := New()
+	app.GET("/", func(ctx *QContext) {
+		ctx.SetJSON(responseData{Message: "any value"})
+	})
+	response := performRequest(&qHttpHandler{rootNode: app.QNode}, http.MethodGet, "/")
+	var body responseData
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Message != "any value" {
+		t.Fatalf("JSON body = %#v", body)
+	}
+}
 func TestSetHTMLSetsContentType(t *testing.T) {
 	app := New()
 	app.GET("/", func(ctx *QContext) {
@@ -64,7 +79,6 @@ func TestSetHTMLSetsContentType(t *testing.T) {
 		t.Fatalf("Content-Type = %q", got)
 	}
 }
-
 func TestSetFileSetsContentTypeAndStreamsBody(t *testing.T) {
 	filePath := filepath.Join(t.TempDir(), "main.js")
 	wantBody := "console.log('vnix');"
@@ -92,7 +106,6 @@ func TestSetFileSetsContentTypeAndStreamsBody(t *testing.T) {
 		t.Fatalf("Content-Disposition = %q, want empty", got)
 	}
 }
-
 func TestSetDownloadUsesAttachmentDisposition(t *testing.T) {
 	filePath := filepath.Join(t.TempDir(), "monthly report.txt")
 	wantBody := "monthly report"
@@ -114,7 +127,6 @@ func TestSetDownloadUsesAttachmentDisposition(t *testing.T) {
 		t.Fatalf("Content-Disposition = (%q, %#v, %v)", disposition, params, err)
 	}
 }
-
 func TestSetFileReturnsPathErrors(t *testing.T) {
 	ctx := newContext(httptest.NewRequest(http.MethodGet, "/", nil), httptest.NewRecorder(), nil)
 	if err := ctx.SetFile(filepath.Join(t.TempDir(), "missing.txt")); err == nil {
@@ -124,7 +136,6 @@ func TestSetFileReturnsPathErrors(t *testing.T) {
 		t.Fatal("SetDownload() should return an error for a directory")
 	}
 }
-
 func TestSetFileUsesBinaryContentTypeForUnknownExtension(t *testing.T) {
 	filePath := filepath.Join(t.TempDir(), "asset.vnixunknown")
 	if err := os.WriteFile(filePath, []byte("asset"), 0600); err != nil {
@@ -138,7 +149,6 @@ func TestSetFileUsesBinaryContentTypeForUnknownExtension(t *testing.T) {
 		t.Fatalf("Content-Type = %q", got)
 	}
 }
-
 func TestSendReturnsErrorWhenFileDisappears(t *testing.T) {
 	filePath := filepath.Join(t.TempDir(), "asset.txt")
 	if err := os.WriteFile(filePath, []byte("asset"), 0600); err != nil {
@@ -155,7 +165,6 @@ func TestSendReturnsErrorWhenFileDisappears(t *testing.T) {
 		t.Fatal("send() should return an error when the file cannot be opened")
 	}
 }
-
 func TestInvalidJSONResponseReturnsServerError(t *testing.T) {
 	app := New()
 	app.GET("/", func(ctx *QContext) {
@@ -167,7 +176,6 @@ func TestInvalidJSONResponseReturnsServerError(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
 	}
 }
-
 func TestFormReadsURLEncodedData(t *testing.T) {
 	form := url.Values{"id": {"42"}, "name": {"vnix"}}
 	request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(form.Encode()))
@@ -185,7 +193,6 @@ func TestFormReadsURLEncodedData(t *testing.T) {
 		t.Fatalf("form response = (%d, %q)", response.Code, response.Body.String())
 	}
 }
-
 func TestFormAndForms(t *testing.T) {
 	form := url.Values{"tag": {"first", "second"}, "empty": {""}}
 	request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(form.Encode()))
@@ -201,13 +208,21 @@ func TestFormAndForms(t *testing.T) {
 	if got := ctx.Form("tag", ""); got != "first" {
 		t.Fatalf("Form() = %q, want first", got)
 	}
-	values := ctx.Forms("tag")
+	values := ctx.FormValues("tag")
 
 	if len(values) != 2 || values[0] != "first" || values[1] != "second" {
-		t.Fatalf("Forms() = %#v", values)
+		t.Fatalf("FormValues() = %#v", values)
+	}
+	values[0] = "changed"
+	if got := ctx.Form("tag", ""); got != "first" {
+		t.Fatalf("mutating FormValues() result changed stored form value to %q", got)
+	}
+	allValues := ctx.RequestForm()
+	allValues["tag"][0] = "changed"
+	if got := ctx.Form("tag", ""); got != "first" {
+		t.Fatalf("mutating RequestForm() result changed stored form value to %q", got)
 	}
 }
-
 func TestFilesReturnsAllMatchingUploads(t *testing.T) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -243,7 +258,6 @@ func TestFilesReturnsAllMatchingUploads(t *testing.T) {
 		t.Fatalf("Files() = (%#v, %v)", files, err)
 	}
 }
-
 func TestFileReadsMultipartUpload(t *testing.T) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -258,7 +272,6 @@ func TestFileReadsMultipartUpload(t *testing.T) {
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-
 	request := httptest.NewRequest(http.MethodPost, "/", &body)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	response := httptest.NewRecorder()
@@ -279,7 +292,6 @@ func TestFileReadsMultipartUpload(t *testing.T) {
 		t.Fatalf("file response = (%d, %q)", response.Code, response.Body.String())
 	}
 }
-
 func TestMissingFileIsSafe(t *testing.T) {
 	file := &QFile{}
 
@@ -302,7 +314,6 @@ func TestMissingFileIsSafe(t *testing.T) {
 		t.Fatalf("MimeType() for invalid media type = %q", got)
 	}
 }
-
 func TestContextMissingValuesAndEmptyBody(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Body = nil
@@ -332,17 +343,17 @@ func TestContextMissingValuesAndEmptyBody(t *testing.T) {
 	if got := ctx.Cookie("missing", "cookie-default"); got != "cookie-default" {
 		t.Fatalf("Cookie() fallback = %q", got)
 	}
-	if got := ctx.Params("missing"); got != nil {
-		t.Fatalf("missing Params() = %#v", got)
+	if got := ctx.ParamValues("missing"); got != nil {
+		t.Fatalf("missing ParamValues() = %#v", got)
 	}
-	if got := ctx.Queries("missing"); got != nil {
-		t.Fatalf("missing Queries() = %#v", got)
+	if got := ctx.QueryValues("missing"); got != nil {
+		t.Fatalf("missing QueryValues() = %#v", got)
 	}
-	if got := ctx.Headers("X-Missing"); got != nil {
-		t.Fatalf("missing Headers() = %#v", got)
+	if got := ctx.HeaderValues("X-Missing"); got != nil {
+		t.Fatalf("missing HeaderValues() = %#v", got)
 	}
-	if got := ctx.Cookies("missing"); got != nil {
-		t.Fatalf("missing Cookies() = %#v", got)
+	if got := ctx.CookieValues("missing"); got != nil {
+		t.Fatalf("missing CookieValues() = %#v", got)
 	}
 	if got, err := ctx.Data(); err != nil || len(got) != 0 {
 		t.Fatalf("Data() with nil body = %#v", got)
@@ -354,18 +365,17 @@ func TestContextMissingValuesAndEmptyBody(t *testing.T) {
 	}
 	ctx = newContext(request, httptest.NewRecorder(), nil)
 
-	if err := ctx.JSON(&struct{}{}); !errors.Is(err, io.EOF) {
-		t.Fatalf("JSON() with nil body error = %v, want EOF", err)
+	if err := ctx.BindJSON(&struct{}{}); !errors.Is(err, io.EOF) {
+		t.Fatalf("BindJSON() with nil body error = %v, want EOF", err)
 	}
 }
-
 func TestFormAndFileHandleInvalidOrMissingData(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("malformed"))
 	request.Header.Set("Content-Type", "multipart/form-data; boundary=missing")
 	ctx := newContext(request, httptest.NewRecorder(), nil)
 
-	if got := ctx.Forms("name"); got != nil {
-		t.Fatalf("Forms() for malformed multipart = %#v", got)
+	if got := ctx.FormValues("name"); got != nil {
+		t.Fatalf("FormValues() for malformed multipart = %#v", got)
 	}
 	if got := ctx.Form("name", "fallback"); got != "fallback" {
 		t.Fatalf("Form() for malformed multipart = %q", got)
@@ -373,7 +383,6 @@ func TestFormAndFileHandleInvalidOrMissingData(t *testing.T) {
 	if got, err := ctx.File("upload"); got != nil || err == nil {
 		t.Fatalf("File() for malformed multipart = (%#v, %v)", got, err)
 	}
-
 	request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader("name=value"))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	ctx = newContext(request, httptest.NewRecorder(), nil)
@@ -381,7 +390,6 @@ func TestFormAndFileHandleInvalidOrMissingData(t *testing.T) {
 	if got, err := ctx.File("upload"); got != nil || !errors.Is(err, http.ErrNotMultipart) {
 		t.Fatalf("File() for non-multipart request = (%#v, %v)", got, err)
 	}
-
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
@@ -402,7 +410,6 @@ func TestFormAndFileHandleInvalidOrMissingData(t *testing.T) {
 		t.Fatalf("Files() for missing multipart field = (%#v, %v)", got, err)
 	}
 }
-
 func TestSetDataResponse(t *testing.T) {
 	app := New()
 	app.GET("/", func(ctx *QContext) {
@@ -414,7 +421,6 @@ func TestSetDataResponse(t *testing.T) {
 		t.Fatalf("raw response = (%d, %q)", response.Code, response.Body.String())
 	}
 }
-
 func TestResponseWithoutBody(t *testing.T) {
 	app := New()
 	app.DELETE("/", func(ctx *QContext) {
@@ -426,7 +432,6 @@ func TestResponseWithoutBody(t *testing.T) {
 		t.Fatalf("empty response = (%d, %q)", response.Code, response.Body.String())
 	}
 }
-
 func TestResponsePreservesExistingHeaders(t *testing.T) {
 	app := New()
 	app.GET("/", func(ctx *QContext) {
@@ -441,18 +446,17 @@ func TestResponsePreservesExistingHeaders(t *testing.T) {
 		t.Fatalf("existing response header = %q", got)
 	}
 }
-
 func TestContextReadsQueryHeaderAndCookies(t *testing.T) {
 	app := New()
 	app.GET("/", func(ctx *QContext) {
 		ctx.SetText(strings.Join([]string{
 			ctx.Query("tag", ""),
-			strings.Join(ctx.Queries("tag"), ","),
+			strings.Join(ctx.QueryValues("tag"), ","),
 			ctx.Query("missing", "default"),
 			ctx.Header("X-Token", ""),
-			strings.Join(ctx.Headers("X-Token"), ","),
+			strings.Join(ctx.HeaderValues("X-Token"), ","),
 			ctx.Cookie("session", ""),
-			strings.Join(ctx.Cookies("session"), ","),
+			strings.Join(ctx.CookieValues("session"), ","),
 		}, ":"))
 	})
 	request := httptest.NewRequest(http.MethodGet, "/?tag=go&tag=vnix", nil)
@@ -469,13 +473,12 @@ func TestContextReadsQueryHeaderAndCookies(t *testing.T) {
 		t.Fatalf("context values response = (%d, %q)", response.Code, response.Body.String())
 	}
 }
-
-func TestContextParamValuesAndDefault(t *testing.T) {
+func TestContextParamValues(t *testing.T) {
 	app := New()
 	app.GET("/items/:id/:id", func(ctx *QContext) {
 		ctx.SetText(strings.Join([]string{
 			ctx.Param("id", ""),
-			strings.Join(ctx.Params("id"), ","),
+			strings.Join(ctx.ParamValues("id"), ","),
 			ctx.Param("missing", "default"),
 		}, ":"))
 	})
@@ -485,7 +488,61 @@ func TestContextParamValuesAndDefault(t *testing.T) {
 		t.Fatalf("parameter response = (%d, %q)", response.Code, response.Body.String())
 	}
 }
-
+func TestContextMultiValueAccessorsReturnCopies(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/?tag=first&tag=second", nil)
+	ctx := newContext(request, httptest.NewRecorder(), TValues{"id": {"first", "second"}})
+	ctx.reqHeader = THeader{"X-Test": {"first", "second"}}
+	ctx.reqQuery = TValues{"tag": {"first", "second"}}
+	ctx.reqCookie = TValues{"session": {"first", "second"}}
+	accessors := []func() []string{
+		func() []string { return ctx.ParamValues("id") },
+		func() []string { return ctx.QueryValues("tag") },
+		func() []string { return ctx.HeaderValues("X-Test") },
+		func() []string { return ctx.CookieValues("session") },
+	}
+	for _, accessor := range accessors {
+		values := accessor()
+		values[0] = "changed"
+	}
+	checks := []struct {
+		name string
+		got  []string
+	}{
+		{name: "ParamValues", got: ctx.ParamValues("id")},
+		{name: "QueryValues", got: ctx.QueryValues("tag")},
+		{name: "HeaderValues", got: ctx.HeaderValues("X-Test")},
+		{name: "CookieValues", got: ctx.CookieValues("session")},
+	}
+	for _, check := range checks {
+		if !reflect.DeepEqual(check.got, []string{"first", "second"}) {
+			t.Errorf("%s() = %#v, want original values", check.name, check.got)
+		}
+	}
+	allParams := ctx.RequestParam()
+	allParams["id"][0] = "changed"
+	allParams["new"] = []string{"value"}
+	allQueries := ctx.RequestQuery()
+	allQueries["tag"][0] = "changed"
+	allQueries["new"] = []string{"value"}
+	allHeaders := ctx.RequestHeader()
+	allHeaders["X-Test"][0] = "changed"
+	allHeaders["X-New"] = []string{"value"}
+	allCookies := ctx.RequestCookie()
+	allCookies["session"][0] = "changed"
+	allCookies["new"] = []string{"value"}
+	if !reflect.DeepEqual(ctx.ParamValues("id"), []string{"first", "second"}) || ctx.reqParam.Exist("new") {
+		t.Error("RequestParam() clone mutated the original route parameters")
+	}
+	if !reflect.DeepEqual(ctx.QueryValues("tag"), []string{"first", "second"}) || ctx.reqQuery.Exist("new") {
+		t.Error("RequestQuery() clone mutated the original query parameters")
+	}
+	if !reflect.DeepEqual(ctx.HeaderValues("X-Test"), []string{"first", "second"}) || ctx.reqHeader.Exist("X-New") {
+		t.Error("RequestHeader() clone mutated the original request headers")
+	}
+	if !reflect.DeepEqual(ctx.CookieValues("session"), []string{"first", "second"}) || ctx.reqCookie.Exist("new") {
+		t.Error("RequestCookie() clone mutated the original cookies")
+	}
+}
 func TestContextReadsBodyOnlyOnce(t *testing.T) {
 	t.Run("raw data", func(t *testing.T) {
 		request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("body"))
@@ -495,7 +552,7 @@ func TestContextReadsBodyOnlyOnce(t *testing.T) {
 		if err != nil || string(got) != "body" {
 			t.Fatalf("Data() = %q", got)
 		}
-		if _, err := ctx.Data(); !errors.Is(err, ErrBodyAlreadyRead) {
+		if _, err := ctx.Data(); !errors.Is(err, errBodyAlreadyRead) {
 			t.Fatalf("second Data() error = %v, want ErrBodyAlreadyRead", err)
 		}
 	})
@@ -508,7 +565,7 @@ func TestContextReadsBodyOnlyOnce(t *testing.T) {
 		if err != nil || got != "body" {
 			t.Fatalf("Text() = %q", got)
 		}
-		if _, err := ctx.Text(); !errors.Is(err, ErrBodyAlreadyRead) {
+		if _, err := ctx.Text(); !errors.Is(err, errBodyAlreadyRead) {
 			t.Fatalf("second Text() error = %v, want ErrBodyAlreadyRead", err)
 		}
 	})
@@ -519,15 +576,14 @@ func TestContextReadsBodyOnlyOnce(t *testing.T) {
 		var value struct {
 			Name string `json:"name"`
 		}
-		if err := ctx.JSON(&value); err != nil || value.Name != "vnix" {
-			t.Fatalf("JSON() = (%v, %#v), error %v", value.Name == "vnix", value, err)
+		if err := ctx.BindJSON(&value); err != nil || value.Name != "vnix" {
+			t.Fatalf("BindJSON() = (%v, %#v), error %v", value.Name == "vnix", value, err)
 		}
-		if err := ctx.JSON(&value); !errors.Is(err, ErrBodyAlreadyRead) {
-			t.Fatalf("second JSON() error = %v, want ErrBodyAlreadyRead", err)
+		if err := ctx.BindJSON(&value); !errors.Is(err, errBodyAlreadyRead) {
+			t.Fatalf("second BindJSON() error = %v, want ErrBodyAlreadyRead", err)
 		}
 	})
 }
-
 func TestContextReadErrors(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/", nil)
 	request.Body = failingRequestBody{}
@@ -536,7 +592,6 @@ func TestContextReadErrors(t *testing.T) {
 	if _, err := ctx.Data(); err == nil {
 		t.Fatalf("Data() should return a read error")
 	}
-
 	request = httptest.NewRequest(http.MethodPost, "/", nil)
 	request.Body = failingRequestBody{}
 	ctx = newContext(request, httptest.NewRecorder(), nil)
@@ -544,15 +599,13 @@ func TestContextReadErrors(t *testing.T) {
 	if _, err := ctx.Text(); err == nil {
 		t.Fatalf("Text() should return a read error")
 	}
-
 	request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader("invalid JSON"))
 	ctx = newContext(request, httptest.NewRecorder(), nil)
 
-	if err := ctx.JSON(&struct{}{}); err == nil {
-		t.Fatalf("JSON() should return an error for malformed JSON")
+	if err := ctx.BindJSON(&struct{}{}); err == nil {
+		t.Fatalf("BindJSON() should return an error for malformed JSON")
 	}
 }
-
 func TestFormAfterRawBodyReadReturnsDefault(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("name=value"))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -565,11 +618,16 @@ func TestFormAfterRawBodyReadReturnsDefault(t *testing.T) {
 		t.Fatalf("Form() after Data() = %q, want fallback", got)
 	}
 }
-
 func TestResponseSetters(t *testing.T) {
 	app := New()
 	app.GET("/", func(ctx *QContext) {
-		ctx.SetHeader(TValues{"X-Custom": {"value"}})
+		ctx.SetHeader("X-Removed", "remove")
+		header := THeader{"X-Custom": {"value"}}
+		ctx.SetResponseHeader(header)
+		header["X-Custom"][0] = "changed"
+		ctx.SetHeader("X-Changed", "old")
+		ctx.SetHeader("X-Changed", "value")
+		ctx.AddHeader("X-Changed", "second")
 		ctx.SetCookie([]*TCookie{{Name: "session", Value: "active"}, nil})
 		ctx.StatusCode(http.StatusCreated)
 		ctx.SetTextF("item-%d", 7)
@@ -582,11 +640,16 @@ func TestResponseSetters(t *testing.T) {
 	if got := response.Header().Get("X-Custom"); got != "value" {
 		t.Fatalf("custom header = %q", got)
 	}
+	if got := response.Header().Values("X-Changed"); !reflect.DeepEqual(got, []string{"value", "second"}) {
+		t.Fatalf("set/add response header values = %#v", got)
+	}
+	if got := response.Header().Get("X-Removed"); got != "" {
+		t.Fatalf("SetResponseHeader() retained old header value %q", got)
+	}
 	if got := response.Result().Cookies(); len(got) != 1 || got[0].Name != "session" || got[0].Value != "active" {
 		t.Fatalf("response cookies = %#v", got)
 	}
 }
-
 func TestQFileSave(t *testing.T) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -601,7 +664,6 @@ func TestQFileSave(t *testing.T) {
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-
 	tempDir, err := os.MkdirTemp(".", ".vnix-test-")
 
 	if err != nil {

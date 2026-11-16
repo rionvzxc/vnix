@@ -16,7 +16,7 @@ func main() {
 		var item struct {
 			Name string `json:"name"`
 		}
-		if err := ctx.JSON(&item); err != nil {
+		if err := ctx.BindJSON(&item); err != nil {
 			ctx.StatusCode(400)
 			ctx.SetText("Invalid JSON request body")
 			return
@@ -29,7 +29,7 @@ func main() {
 		var item struct {
 			Name string `json:"name"`
 		}
-		if err := ctx.JSON(&item); err != nil {
+		if err := ctx.BindJSON(&item); err != nil {
 			ctx.StatusCode(400)
 			ctx.SetText("Invalid JSON request body")
 			return

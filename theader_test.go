@@ -1,0 +1,87 @@
+package vnix
+
+import (
+	"reflect"
+	"sort"
+	"testing"
+)
+
+func TestTHeaderCanonicalizesNames(t *testing.T) {
+	header := THeader{}
+	header.Set("content-type", "text/plain")
+	header.Add("CONTENT-TYPE", "application/json")
+
+	if got := header.Get("Content-Type"); got != "text/plain" {
+		t.Fatalf("first header value = %q, want %q", got, "text/plain")
+	}
+	if got := header.GetAll("content-type"); !reflect.DeepEqual(got, []string{"text/plain", "application/json"}) {
+		t.Fatalf("header values = %#v", got)
+	}
+	if !header.Exist("CONTENT-TYPE") {
+		t.Fatal("expected case-insensitive header lookup")
+	}
+	if _, exists := header["Content-Type"]; !exists {
+		t.Fatal("expected canonical header key in map")
+	}
+}
+func TestTHeaderGetDefaultAndLast(t *testing.T) {
+	header := THeader{"X-Test": {"first", "last"}}
+
+	if got := header.GetDefault("x-test", "fallback"); got != "first" {
+		t.Fatalf("GetDefault(X-Test) = %q, want first", got)
+	}
+	if got := header.GetDefault("missing", "fallback"); got != "fallback" {
+		t.Fatalf("GetDefault(missing) = %q, want fallback", got)
+	}
+	if got := header.Get("X-Test"); got != "first" {
+		t.Fatalf("Get(X-Test) = %q, want first", got)
+	}
+	if got := header.GetLast("x-test"); got != "last" {
+		t.Fatalf("GetLast(X-Test) = %q, want last", got)
+	}
+}
+func TestTHeaderSetReplacesAndDelRemoves(t *testing.T) {
+	header := THeader{"X-Test": {"old", "value"}}
+	header.Set("x-test", "new")
+
+	if got := header.GetAll("X-Test"); !reflect.DeepEqual(got, []string{"new"}) {
+		t.Fatalf("replaced values = %#v", got)
+	}
+	header.Del("X-TEST")
+	if header.Exist("x-test") {
+		t.Fatal("expected header key to be deleted")
+	}
+}
+func TestTHeaderCloneCanonicalizesAndMergesLiteralKeys(t *testing.T) {
+	header := THeader{"content-type": {"text/plain"}, "CONTENT-TYPE": {"application/json"}}
+	cloned := header.Clone()
+	got := cloned.GetAll("Content-Type")
+	sort.Strings(got)
+
+	if !reflect.DeepEqual(got, []string{"application/json", "text/plain"}) {
+		t.Fatalf("merged canonical values = %#v", got)
+	}
+}
+func TestTHeaderCloneIsIndependent(t *testing.T) {
+	header := THeader{"X-Test": {"first", "second"}, "nil": nil, "empty": {}}
+	cloned := header.Clone()
+	cloned["X-Test"][0] = "changed"
+	cloned["X-New"] = []string{"value"}
+	if header.Get("x-test") != "first" || header.Exist("x-new") {
+		t.Fatal("expected cloned header changes not to affect the source")
+	}
+	if cloned["Nil"] != nil || cloned["Empty"] == nil {
+		t.Fatal("expected Clone to preserve nil and empty slices")
+	}
+	values := header.GetAll("x-test")
+	values[0] = "changed"
+	if header.Get("x-test") != "first" {
+		t.Fatal("expected GetAll result not to mutate the source")
+	}
+}
+func TestTHeaderClonePreservesNilMap(t *testing.T) {
+	var header THeader
+	if header.Clone() != nil {
+		t.Fatal("expected nil map clone to remain nil")
+	}
+}

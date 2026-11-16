@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 )
@@ -21,109 +22,117 @@ const (
 	bodyTypeFile
 )
 
-// ErrBodyAlreadyRead is returned when a body reader is used after another body reader consumed it.
-var ErrBodyAlreadyRead = errors.New("request body has already been read")
+var errBodyAlreadyRead = errors.New("request body has already been read")
 
 // QContext provides access to an HTTP request and controls its response.
 type QContext struct {
 	httpRequest  *http.Request
 	httpResponse http.ResponseWriter
 
-	reqHeader      http.Header
+	reqHeader      THeader
 	reqQuery       TValues
 	reqCookie      TValues
 	reqParam       TValues
-	reqForm        TValues
 	bodyRead       bool
 	bodyFormParsed bool
 
 	bodyType     tBodyType
 	bodyDataRaw  []byte
 	bodyDataText string
-	bodyDataJSON TMap
+	bodyDataJSON any
 	bodyFilePath string
 
-	resHeader  TValues
+	resHeader  THeader
 	resCookies []*TCookie
 
 	statusCode int
 }
-
 func newContext(hReq *http.Request, hRes http.ResponseWriter, reqParam TValues) *QContext {
 	return &QContext{
 		httpRequest:  hReq,
 		httpResponse: hRes,
-		reqHeader:    hReq.Header,
+		reqHeader:    THeader(hReq.Header).Clone(),
 		reqParam:     reqParam,
-		resHeader:    make(TValues),
+		resHeader:    make(THeader),
 		statusCode:   http.StatusOK,
 		bodyType:     bodyTypeNone,
 	}
 }
-
-// Param returns the first route parameter value or defaultValue.
+// Param returns the first route parameter value for name or defaultValue.
 func (this *QContext) Param(name string, defaultValue string) string {
-	values := this.reqParam[name]
-
-	if len(values) > 0 {
-		return values[0]
-	}
-	return defaultValue
+	return this.reqParam.GetDefault(name, defaultValue)
 }
-
-// Params returns all route parameter values for name.
-func (this *QContext) Params(name string) []string {
-	return this.reqParam[name]
+// ParamValues returns a copy of all route parameter values for name.
+func (this *QContext) ParamValues(name string) []string {
+	return this.reqParam.GetAll(name)
 }
-
-// Query returns the first query parameter value or defaultValue.
+// RequestParam returns a clone of all route parameters.
+func (this *QContext) RequestParam() TValues {
+	return this.reqParam.Clone()
+}
+// Query returns the first query parameter value for name or defaultValue.
 func (this *QContext) Query(name string, defaultValue string) string {
-	values := this.Queries(name)
-
-	if len(values) > 0 {
-		return values[0]
-	}
-	return defaultValue
-}
-
-// Queries returns all query parameter values for name.
-func (this *QContext) Queries(name string) []string {
 	if this.reqQuery == nil {
 		this.reqQuery = TValues(this.httpRequest.URL.Query())
 	}
-	return this.reqQuery[name]
+	return this.reqQuery.GetDefault(name, defaultValue)
 }
-
-// Header returns the first request header value or defaultValue.
+// QueryValues returns a copy of all query parameter values for name.
+func (this *QContext) QueryValues(name string) []string {
+	if this.reqQuery == nil {
+		this.reqQuery = TValues(this.httpRequest.URL.Query())
+	}
+	return this.reqQuery.GetAll(name)
+}
+// RequestQuery returns a clone of all query parameters.
+func (this *QContext) RequestQuery() TValues {
+	if this.reqQuery == nil {
+		this.reqQuery = TValues(this.httpRequest.URL.Query())
+	}
+	return this.reqQuery.Clone()
+}
+// Header returns the first request header value for name or defaultValue.
 func (this *QContext) Header(name string, defaultValue string) string {
-	values := this.Headers(name)
-
-	if len(values) > 0 {
-		return values[0]
-	}
-	return defaultValue
+	return this.reqHeader.GetDefault(name, defaultValue)
 }
-
-// Headers returns all request header values for name.
-func (this *QContext) Headers(name string) []string {
-	if values, exists := this.reqHeader[http.CanonicalHeaderKey(name)]; exists {
-		return values
-	}
-	return nil
+// HeaderValues returns a copy of all request header values for name.
+func (this *QContext) HeaderValues(name string) []string {
+	return this.reqHeader.GetAll(name)
 }
-
-// Cookie returns the first request cookie value or defaultValue.
+// RequestHeader returns a clone of all request headers.
+func (this *QContext) RequestHeader() THeader {
+	return this.reqHeader.Clone()
+}
+// SetHeader replaces the response values for name.
+func (this *QContext) SetHeader(name string, values ...string) {
+	if this.resHeader == nil {
+		this.resHeader = make(THeader)
+	}
+	this.resHeader.Set(name, values...)
+}
+// AddHeader appends response values for name.
+func (this *QContext) AddHeader(name string, values ...string) {
+	if this.resHeader == nil {
+		this.resHeader = make(THeader)
+	}
+	this.resHeader.Add(name, values...)
+}
+// Cookie returns the first request cookie value for name or defaultValue.
 func (this *QContext) Cookie(name string, defaultValue string) string {
-	values := this.Cookies(name)
-
-	if len(values) > 0 {
-		return values[0]
-	}
-	return defaultValue
+	this.parseCookies()
+	return this.reqCookie.GetDefault(name, defaultValue)
 }
-
-// Cookies returns all request cookie values for name.
-func (this *QContext) Cookies(name string) []string {
+// CookieValues returns a copy of all request cookie values for name.
+func (this *QContext) CookieValues(name string) []string {
+	this.parseCookies()
+	return this.reqCookie.GetAll(name)
+}
+// RequestCookie returns a clone of all request cookies.
+func (this *QContext) RequestCookie() TValues {
+	this.parseCookies()
+	return this.reqCookie.Clone()
+}
+func (this *QContext) parseCookies() {
 	if this.reqCookie == nil {
 		this.reqCookie = make(TValues)
 
@@ -131,13 +140,11 @@ func (this *QContext) Cookies(name string) []string {
 			this.reqCookie[cookie.Name] = append(this.reqCookie[cookie.Name], cookie.Value)
 		}
 	}
-	return this.reqCookie[name]
 }
-
 // Data reads and returns the raw request body once.
 func (this *QContext) Data() ([]byte, error) {
 	if this.bodyRead {
-		return nil, ErrBodyAlreadyRead
+		return nil, errBodyAlreadyRead
 	}
 	this.bodyRead = true
 
@@ -146,11 +153,10 @@ func (this *QContext) Data() ([]byte, error) {
 	}
 	return io.ReadAll(this.httpRequest.Body)
 }
-
 // Text reads and returns the request body as text once.
 func (this *QContext) Text() (string, error) {
 	if this.bodyRead {
-		return "", ErrBodyAlreadyRead
+		return "", errBodyAlreadyRead
 	}
 	this.bodyRead = true
 
@@ -160,11 +166,10 @@ func (this *QContext) Text() (string, error) {
 	rawData, err := io.ReadAll(this.httpRequest.Body)
 	return string(rawData), err
 }
-
-// JSON decodes the request body into value once.
-func (this *QContext) JSON(value any) error {
+// BindJSON decodes the request body into value once.
+func (this *QContext) BindJSON(value any) error {
 	if this.bodyRead {
-		return ErrBodyAlreadyRead
+		return errBodyAlreadyRead
 	}
 	this.bodyRead = true
 
@@ -173,27 +178,60 @@ func (this *QContext) JSON(value any) error {
 	}
 	return json.NewDecoder(this.httpRequest.Body).Decode(value)
 }
+// BindParam binds route parameters into a struct using uri tags.
+func (this *QContext) BindParam(value any) error {
+	return bindValues(value, "uri", this.reqParam)
+}
+// BindQuery binds query parameters into a struct using query tags.
+func (this *QContext) BindQuery(value any) error {
+	values, err := url.ParseQuery(this.httpRequest.URL.RawQuery)
 
+	if err != nil {
+		return err
+	}
+	this.reqQuery = TValues(values)
+	return bindValues(value, "query", this.reqQuery)
+}
+// BindHeader binds request headers into a struct using header tags.
+func (this *QContext) BindHeader(value any) error {
+	return bindValues(value, "header", TValues(this.reqHeader))
+}
+// BindForm binds form fields into a struct using form tags.
+func (this *QContext) BindForm(value any) error {
+	if err := this.parseForm(); err != nil {
+		return err
+	}
+	return bindValues(value, "form", TValues(this.httpRequest.PostForm))
+}
+// BindCookie binds request cookies into a struct using cookie tags.
+func (this *QContext) BindCookie(value any) error {
+	this.parseCookies()
+	return bindValues(value, "cookie", this.reqCookie)
+}
 // Form returns the first form value for name or defaultValue.
 func (this *QContext) Form(name string, defaultValue string) string {
-	values := this.Forms(name)
-
-	if len(values) > 0 {
-		return values[0]
+	if err := this.parseForm(); err != nil {
+		return defaultValue
 	}
-	return defaultValue
+	return TValues(this.httpRequest.PostForm).GetDefault(name, defaultValue)
 }
-
-// Forms returns all values for a form field, or nil if parsing fails.
-func (this *QContext) Forms(name string) []string {
+// FormValues returns a copy of all values for a form field.
+func (this *QContext) FormValues(name string) []string {
 	if err := this.parseForm(); err != nil {
 		return nil
 	}
-	return this.httpRequest.PostForm[name]
+	return append([]string(nil), this.httpRequest.PostForm[name]...)
+}
+// RequestForm returns a clone of all parsed form values, or nil if parsing fails.
+func (this *QContext) RequestForm() TValues {
+	if err := this.parseForm(); err != nil {
+		return nil
+	}
+	return TValues(this.httpRequest.PostForm).Clone()
 }
 func (this *QContext) parseForm() error {
 	if this.bodyRead && !this.bodyFormParsed {
-		return ErrBodyAlreadyRead
+		return errBodyAlreadyRead
 	}
 	this.bodyRead = true
 	this.bodyFormParsed = true
@@ -207,7 +245,6 @@ func (this *QContext) parseForm() error {
 	}
 	return nil
 }
-
 // File returns the first uploaded file for name.
 func (this *QContext) File(name string) (*QFile, error) {
 	files, err := this.Files(name)
@@ -217,7 +254,6 @@ func (this *QContext) File(name string) (*QFile, error) {
 	}
 	return files[0], nil
 }
-
 // Files returns all uploaded files for name.
 func (this *QContext) Files(name string) ([]*QFile, error) {
 	if err := this.parseForm(); err != nil {
@@ -238,50 +274,41 @@ func (this *QContext) Files(name string) ([]*QFile, error) {
 	}
 	return files, nil
 }
-
 // SetData sets the response body to raw bytes.
 func (this *QContext) SetData(data []byte) {
 	this.bodyType = bodyTypeRaw
 	this.bodyDataRaw = data
 	this.bodyFilePath = ""
 }
-
 // SetText sets the response body to plain text.
 func (this *QContext) SetText(data string) {
 	this.bodyType = bodyTypeText
 	this.bodyDataText = data
 	this.bodyFilePath = ""
 }
-
 // SetHTML sets the response body with an HTML content type.
 func (this *QContext) SetHTML(data string) {
 	this.bodyType = bodyTypeText
 	this.bodyDataText = data
 	this.bodyFilePath = ""
-	this.resHeader["Content-Type"] = []string{"text/html; charset=utf-8"}
+	this.resHeader.Set("Content-Type", "text/html; charset=utf-8")
 }
-
 // SetTextF formats and sets the response body to plain text.
 func (this *QContext) SetTextF(format string, args ...any) {
 	this.SetText(fmt.Sprintf(format, args...))
 }
-
-// SetJSON sets the response body to JSON and configures its content type.
-func (this *QContext) SetJSON(data TMap) {
+// SetJSON sets any value as the JSON response body and configures its content type.
+func (this *QContext) SetJSON(data any) {
 	this.bodyType = bodyTypeJSON
 	this.bodyDataJSON = data
 	this.bodyFilePath = ""
 
-	this.resHeader["Content-Type"] = []string{
-		"application/json; charset=utf-8",
-	}
+	this.resHeader.Set("Content-Type", "application/json; charset=utf-8")
 }
-
 // SetFile sets a file as the response body and detects its content type from its extension.
 func (this *QContext) SetFile(path string) error {
 	return this.setFile(path, false)
 }
-
 // SetDownload sets a file as an attachment and detects its content type from its extension.
 func (this *QContext) SetDownload(path string) error {
 	return this.setFile(path, true)
@@ -313,17 +340,18 @@ func (this *QContext) setFile(path string, download bool) error {
 	}
 	return nil
 }
+// SetResponseHeader replaces all response headers with a clone of header.
+func (this *QContext) SetResponseHeader(header THeader) {
+	this.resHeader = header.Clone()
 
-// SetHeader replaces the response headers with header.
-func (this *QContext) SetHeader(header TValues) {
-	this.resHeader = header
+	if this.resHeader == nil {
+		this.resHeader = make(THeader)
+	}
 }
-
 // SetCookie sets the cookies to add to the response.
 func (this *QContext) SetCookie(cookies []*TCookie) {
 	this.resCookies = cookies
 }
-
 // StatusCode sets the HTTP status code for the response.
 func (this *QContext) StatusCode(code int) {
 	this.statusCode = code

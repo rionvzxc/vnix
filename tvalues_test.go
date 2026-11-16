@@ -13,7 +13,6 @@ func TestTValuesSetReplacesValues(t *testing.T) {
 		t.Fatalf("expected replaced values, got %#v", got)
 	}
 }
-
 func TestTValuesAddAppendsValues(t *testing.T) {
 	values := TValues{"name": {"first"}}
 	values.Add("name", "second", "third")
@@ -26,7 +25,6 @@ func TestTValuesAddAppendsValues(t *testing.T) {
 		t.Fatalf("expected first value %q, got %q", "value", got)
 	}
 }
-
 func TestTValuesGetAndGetAll(t *testing.T) {
 	values := TValues{"name": {"first", "second"}}
 
@@ -43,7 +41,25 @@ func TestTValuesGetAndGetAll(t *testing.T) {
 		t.Fatalf("expected GetAll result not to mutate map, got %q", got)
 	}
 }
+func TestTValuesGetDefaultAndLast(t *testing.T) {
+	values := TValues{"name": {"first", "last"}, "empty": {}}
 
+	if got := values.GetDefault("name", "fallback"); got != "first" {
+		t.Fatalf("GetDefault(name) = %q, want first", got)
+	}
+	if got := values.GetDefault("missing", "fallback"); got != "fallback" {
+		t.Fatalf("GetDefault(missing) = %q, want fallback", got)
+	}
+	if got := values.Get("name"); got != "first" {
+		t.Fatalf("Get(name) = %q, want first", got)
+	}
+	if got := values.GetLast("name"); got != "last" {
+		t.Fatalf("GetLast(name) = %q, want last", got)
+	}
+	if got := values.GetLast("empty"); got != "" {
+		t.Fatalf("GetLast(empty) = %q, want empty", got)
+	}
+}
 func TestTValuesGetMissingOrEmpty(t *testing.T) {
 	values := TValues{"empty": {}}
 
@@ -57,7 +73,6 @@ func TestTValuesGetMissingOrEmpty(t *testing.T) {
 		t.Fatalf("expected no values for missing key, got %#v", got)
 	}
 }
-
 func TestTValuesDelRemovesValues(t *testing.T) {
 	values := TValues{"name": {"first", "second"}}
 	values.Del("name")
@@ -66,7 +81,6 @@ func TestTValuesDelRemovesValues(t *testing.T) {
 		t.Fatal("expected key to be deleted")
 	}
 }
-
 func TestTValuesExist(t *testing.T) {
 	values := TValues{"name": {"value"}, "empty": {}}
 
@@ -80,7 +94,6 @@ func TestTValuesExist(t *testing.T) {
 		t.Fatal("expected missing key not to be found")
 	}
 }
-
 func TestTValuesSetEmptyClearsValues(t *testing.T) {
 	values := TValues{"name": {"first"}}
 	values.Set("name")
@@ -92,7 +105,6 @@ func TestTValuesSetEmptyClearsValues(t *testing.T) {
 		t.Fatalf("expected no values after empty Set, got %#v", got)
 	}
 }
-
 func TestTValuesCloneIsIndependent(t *testing.T) {
 	values := TValues{"name": {"first", "second"}, "nil": nil, "empty": {}}
 	cloned := values.Clone()
@@ -109,7 +121,6 @@ func TestTValuesCloneIsIndependent(t *testing.T) {
 		t.Fatal("expected Clone to preserve nil and empty slices")
 	}
 }
-
 func TestTValuesClonePreservesNilMap(t *testing.T) {
 	var values TValues
 
