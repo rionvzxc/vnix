@@ -14,6 +14,34 @@ func performRequest(handler http.Handler, method string, path string) *httptest.
 	handler.ServeHTTP(response, request)
 	return response
 }
+func TestUnicodeRoutes(t *testing.T) {
+	tests := []struct {
+		name      string
+		route     string
+		path      string
+		paramName string
+		want      string
+	}{
+		{"static", "/café", "/café", "", "matched"},
+		{"escaped", "/café", "/caf%C3%A9", "", "matched"},
+		{"nested", "/日本/😀/", "/日本/😀/", "", "matched"},
+		{"parameter", "/café/:名前", "/café/東京", "名前", "東京"},
+		{"wildcard", "/日本/*経路", "/日本/画像/😀.png", "経路", "画像/😀.png"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := New()
+			app.Group("/店舗").GET(tt.route, func(ctx *QContext) {
+				ctx.SetText(ctx.Param(tt.paramName, "matched"))
+			})
+			response := performRequest(&qHttpHandler{rootNode: app.QNode}, http.MethodGet, "/店舗"+tt.path)
+			if response.Code != http.StatusOK || response.Body.String() != tt.want {
+				t.Fatalf("response = (%d, %q), want (200, %q)", response.Code, response.Body.String(), tt.want)
+			}
+		})
+	}
+}
+
 func TestRouteMethodsAndParameters(t *testing.T) {
 	app := New()
 	app.DELETE("/items/:id", func(ctx *QContext) {

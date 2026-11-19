@@ -96,7 +96,7 @@ func (this *QNode) createChildNode(path string, isStaticOnly bool, lastNodeType 
 	for i := 0; i < len(path); i++ {
 		if path[i] == '/' || i == len(path)-1 {
 			if path[i] != '/' {
-				part += string(path[i])
+				part += path[i : i+1]
 			}
 			if part != "" {
 				if currentNode.nodeType == vNodeFileServer || currentNode.nodeType == vNodeWildcard {
@@ -173,7 +173,7 @@ func (this *QNode) createChildNode(path string, isStaticOnly bool, lastNodeType 
 			}
 			continue
 		}
-		part += string(path[i])
+		part += path[i : i+1]
 	}
 	if lastNodeType == vNodeFileServer {
 		if !isStaticOnly {
