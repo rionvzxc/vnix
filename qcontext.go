@@ -35,6 +35,7 @@ type QContext struct {
 	reqParam       TValues
 	bodyRead       bool
 	bodyFormParsed bool
+	bodyFormErr    error
 
 	bodyType     tBodyType
 	bodyDataRaw  []byte
@@ -230,20 +231,25 @@ func (this *QContext) RequestForm() TValues {
 	return TValues(this.httpRequest.PostForm).Clone()
 }
 func (this *QContext) parseForm() error {
-	if this.bodyRead && !this.bodyFormParsed {
+	if this.bodyFormParsed {
+		return this.bodyFormErr
+	}
+	if this.bodyRead {
 		return errBodyAlreadyRead
 	}
 	this.bodyRead = true
 	this.bodyFormParsed = true
-	err := this.httpRequest.ParseMultipartForm(32 << 20)
+	this.bodyFormErr = this.httpRequest.ParseForm()
 
-	if err != nil && err != http.ErrNotMultipart {
-		return err
+	if this.bodyFormErr != nil {
+		return this.bodyFormErr
 	}
-	if this.httpRequest.MultipartForm == nil {
-		return this.httpRequest.ParseForm()
+	this.bodyFormErr = this.httpRequest.ParseMultipartForm(32 << 20)
+
+	if this.bodyFormErr == http.ErrNotMultipart {
+		this.bodyFormErr = nil
 	}
-	return nil
+	return this.bodyFormErr
 }
 // File returns the first uploaded file for name.
 func (this *QContext) File(name string) (*QFile, error) {
@@ -379,6 +385,7 @@ func (this *QContext) send() error {
 		file, err = os.Open(this.bodyFilePath)
 
 		if err != nil {
+			http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return err
 		}
 		defer file.Close()

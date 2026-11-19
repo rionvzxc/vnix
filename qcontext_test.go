@@ -165,6 +165,66 @@ func TestSendReturnsErrorWhenFileDisappears(t *testing.T) {
 		t.Fatal("send() should return an error when the file cannot be opened")
 	}
 }
+func TestFileDisappearsBeforeResponse(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "asset.txt")
+	if err := os.WriteFile(filePath, []byte("asset"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	app := New()
+	app.GET("/", func(ctx *QContext) {
+		if err := ctx.SetFile(filePath); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(filePath); err != nil {
+			t.Fatal(err)
+		}
+	})
+	response := performRequest(&qHttpHandler{rootNode: app.QNode}, http.MethodGet, "/")
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
+	}
+	if response.Body.String() != "Internal Server Error\n" {
+		t.Fatalf("body = %q", response.Body.String())
+	}
+}
+
+func TestFormParseErrorPersists(t *testing.T) {
+	tests := []struct {
+		name        string
+		contentType string
+		body        string
+	}{
+		{"urlencoded", "application/x-www-form-urlencoded", "name=valid&broken=%ZZ"},
+		{"multipart", "multipart/form-data; boundary=test", "--test\r\nInvalid-Header\r\n\r\nvalue\r\n--test--\r\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tt.body))
+			request.Header.Set("Content-Type", tt.contentType)
+			ctx := newContext(request, httptest.NewRecorder(), nil)
+			var input struct {
+				Name string `form:"name"`
+			}
+			firstErr := ctx.BindForm(&input)
+			if firstErr == nil {
+				t.Fatal("BindForm() should reject malformed form data")
+			}
+			if err := ctx.BindForm(&input); err != firstErr {
+				t.Fatalf("second error = %v, want %v", err, firstErr)
+			}
+			if got := ctx.Form("name", "fallback"); got != "fallback" {
+				t.Fatalf("Form() = %q, want fallback", got)
+			}
+			if ctx.FormValues("name") != nil || ctx.RequestForm() != nil {
+				t.Fatal("form accessors should reject partially parsed data")
+			}
+			if _, err := ctx.Files("upload"); err != firstErr {
+				t.Fatalf("Files() error = %v, want %v", err, firstErr)
+			}
+		})
+	}
+}
+
 func TestInvalidJSONResponseReturnsServerError(t *testing.T) {
 	app := New()
 	app.GET("/", func(ctx *QContext) {
