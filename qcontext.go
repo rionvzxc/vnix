@@ -46,7 +46,10 @@ type QContext struct {
 	resHeader  THeader
 	resCookies []*TCookie
 
-	statusCode int
+	statusCode   int
+	handlers     []THandlerFunc
+	handlerIndex int
+	aborted      bool
 }
 func newContext(hReq *http.Request, hRes http.ResponseWriter, reqParam TValues) *QContext {
 	return &QContext{
@@ -57,6 +60,7 @@ func newContext(hReq *http.Request, hRes http.ResponseWriter, reqParam TValues) 
 		resHeader:    make(THeader),
 		statusCode:   http.StatusOK,
 		bodyType:     vBodyTypeNone,
+		handlerIndex: -1,
 	}
 }
 // Param returns the first route parameter value for name or defaultValue.

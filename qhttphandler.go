@@ -12,7 +12,8 @@ func (this *qHttpHandler) ServeHTTP(hRes http.ResponseWriter, hReq *http.Request
 
 	if handlerFunc != nil {
 		ctx := newContext(hReq, hRes, paramMap)
-		handlerFunc(ctx)
+		ctx.handlers = append(currentNode.getMiddlewareHandlers(false), handlerFunc)
+		ctx.Next()
 		ctx.send()
 		return
 	}

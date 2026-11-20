@@ -53,6 +53,8 @@ Open http://localhost:8080 to see the result.
 | [basic](https://github.com/rionvzxc/vnix/tree/main/examples/basic) | Basic HTTP server |
 | [basic2](https://github.com/rionvzxc/vnix/tree/main/examples/basic2) | HTTP server with multiple routes |
 | [basic_group](https://github.com/rionvzxc/vnix/tree/main/examples/basic_group) | Grouping routes with URL prefixes |
+| [middleware](https://github.com/rionvzxc/vnix/tree/main/examples/middleware) | Middleware with default Add mode and inheritance |
+| [middleware2](https://github.com/rionvzxc/vnix/tree/main/examples/middleware2) | Configuring middleware modes, inheritance, and file server exclusions |
 | [post](https://github.com/rionvzxc/vnix/tree/main/examples/post) | Handling POST form data |
 | [query_param](https://github.com/rionvzxc/vnix/tree/main/examples/query_param) | Working with query parameters and URL parameters |
 | [methods](https://github.com/rionvzxc/vnix/tree/main/examples/methods) | Handling JSON requests with GET, POST, PUT, PATCH, and DELETE |

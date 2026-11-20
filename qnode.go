@@ -23,6 +23,8 @@ type QNode struct {
 	staticNodes    []*QNode
 	dynamicNode    *QNode
 	handlerFuncMap map[string]THandlerFunc
+	parentNode     *QNode
+	middleware     []*QMiddleware
 }
 func newNode(name string, nodeType tNodeType) *QNode {
 	return &QNode{
@@ -122,6 +124,7 @@ func (this *QNode) createChildNode(path string, isStaticOnly bool, lastNodeType 
 						}
 					} else {
 						newParamNode := newNode(name, vNodeTypeParam)
+						newParamNode.parentNode = currentNode
 						currentNode.dynamicNode = newParamNode
 						currentNode = newParamNode
 						isNewNode = true
@@ -148,6 +151,7 @@ func (this *QNode) createChildNode(path string, isStaticOnly bool, lastNodeType 
 						}
 					} else {
 						newWildcardNode := newNode(name, vNodeTypeWildcard)
+						newWildcardNode.parentNode = currentNode
 						currentNode.dynamicNode = newWildcardNode
 						currentNode = newWildcardNode
 						isNewNode = true
@@ -166,6 +170,7 @@ func (this *QNode) createChildNode(path string, isStaticOnly bool, lastNodeType 
 						currentNode = foundNode
 					} else {
 						newStaticNode := newNode(part, vNodeTypeStatic)
+						newStaticNode.parentNode = currentNode
 						currentNode.staticNodes = append(currentNode.staticNodes, newStaticNode)
 						currentNode = newStaticNode
 						isNewNode = true
@@ -271,4 +276,40 @@ func (this *QNode) setMethodHandler(method string, handlerFunc THandlerFunc) {
 		this.handlerFuncMap = make(map[string]THandlerFunc)
 	}
 	this.handlerFuncMap[method] = handlerFunc
+}
+
+// UseMiddleware registers handlers and returns their configuration.
+// The default mode is Add with inheritance enabled.
+// Nil handlers are ignored. UseMiddleware(nil).ModeSet().Inherit(true)
+// clears middleware for this node and its descendants.
+// Configuration applies to existing and future descendants and must finish
+// before serving requests.
+func (this *QNode) UseMiddleware(handlers ...THandlerFunc) *QMiddleware {
+	entry := &QMiddleware{inherit: true}
+
+	for _, handler := range handlers {
+		if handler != nil {
+			entry.handlers = append(entry.handlers, handler)
+		}
+	}
+	this.middleware = append(this.middleware, entry)
+	return entry
+}
+
+func (this *QNode) getMiddlewareHandlers(inheritedOnly bool) []THandlerFunc {
+	var handlers []THandlerFunc
+
+	if this.parentNode != nil {
+		handlers = this.parentNode.getMiddlewareHandlers(true)
+	}
+	for _, entry := range this.middleware {
+		if inheritedOnly && !entry.inherit {
+			continue
+		}
+		if entry.modeSet {
+			handlers = nil
+		}
+		handlers = append(handlers, entry.handlers...)
+	}
+	return handlers
 }
