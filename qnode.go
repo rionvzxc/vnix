@@ -6,23 +6,25 @@ import (
 	"strings"
 )
 
+type tNodeType uint
+
 const (
-	vNodeNone TNodeType = iota
-	vNodeStatic
-	vNodeParam
-	vNodeWildcard
-	vNodeFileServer
+	vNodeTypeNone tNodeType = iota
+	vNodeTypeStatic
+	vNodeTypeParam
+	vNodeTypeWildcard
+	vNodeTypeFileServer
 )
 
 // QNode represents a route group and its registered HTTP handlers.
 type QNode struct {
 	name           string
-	nodeType       TNodeType
+	nodeType       tNodeType
 	staticNodes    []*QNode
 	dynamicNode    *QNode
 	handlerFuncMap map[string]THandlerFunc
 }
-func newNode(name string, nodeType TNodeType) *QNode {
+func newNode(name string, nodeType tNodeType) *QNode {
 	return &QNode{
 		name:     name,
 		nodeType: nodeType,
@@ -51,7 +53,7 @@ func (this *QNode) PATCH(path string, handler THandlerFunc) *QNode {
 }
 // FileServer registers a file server at a route that ends with a static segment.
 func (this *QNode) FileServer(routePath string, directory string) *QNode {
-	lastNode := this.createChildNode(routePath, true, vNodeFileServer)
+	lastNode := this.createChildNode(routePath, true, vNodeTypeFileServer)
 	handler := func(ctx *QContext) {
 		relativePath := filepath.FromSlash(ctx.Param("file_server_path", ""))
 
@@ -85,10 +87,10 @@ func (this *QNode) Handle(method string, path string, handler THandlerFunc) *QNo
 }
 // Group returns the route group at path, creating missing route nodes.
 func (this *QNode) Group(path string) *QNode {
-	lastNode := this.createChildNode(path, false, vNodeNone)
+	lastNode := this.createChildNode(path, false, vNodeTypeNone)
 	return lastNode
 }
-func (this *QNode) createChildNode(path string, isStaticOnly bool, lastNodeType TNodeType) *QNode {
+func (this *QNode) createChildNode(path string, isStaticOnly bool, lastNodeType tNodeType) *QNode {
 	var part string
 	currentNode := this
 	isNewNode := false
@@ -99,7 +101,7 @@ func (this *QNode) createChildNode(path string, isStaticOnly bool, lastNodeType 
 				part += path[i : i+1]
 			}
 			if part != "" {
-				if currentNode.nodeType == vNodeFileServer || currentNode.nodeType == vNodeWildcard {
+				if currentNode.nodeType == vNodeTypeFileServer || currentNode.nodeType == vNodeTypeWildcard {
 					panic("Cannot register a route below a file server or wildcard route")
 				}
 				isNewNode = false
@@ -113,19 +115,19 @@ func (this *QNode) createChildNode(path string, isStaticOnly bool, lastNodeType 
 					dynamicNode := currentNode.dynamicNode
 
 					if dynamicNode != nil {
-						if dynamicNode.nodeType == vNodeParam && dynamicNode.name == name {
+						if dynamicNode.nodeType == vNodeTypeParam && dynamicNode.name == name {
 							currentNode = dynamicNode
 						} else {
 							panic("Route parameter conflict")
 						}
 					} else {
-						newParamNode := newNode(name, vNodeParam)
+						newParamNode := newNode(name, vNodeTypeParam)
 						currentNode.dynamicNode = newParamNode
 						currentNode = newParamNode
 						isNewNode = true
 					}
 				} else if part[0] == '*' {
-					if lastNodeType == vNodeFileServer {
+					if lastNodeType == vNodeTypeFileServer {
 						panic("File server route must end with a static segment")
 					}
 					if i < len(path)-1 {
@@ -139,13 +141,13 @@ func (this *QNode) createChildNode(path string, isStaticOnly bool, lastNodeType 
 					dynamicNode := currentNode.dynamicNode
 
 					if dynamicNode != nil {
-						if dynamicNode.nodeType == vNodeWildcard && dynamicNode.name == name {
+						if dynamicNode.nodeType == vNodeTypeWildcard && dynamicNode.name == name {
 							currentNode = dynamicNode
 						} else {
 							panic("Route wildcard conflict")
 						}
 					} else {
-						newWildcardNode := newNode(name, vNodeWildcard)
+						newWildcardNode := newNode(name, vNodeTypeWildcard)
 						currentNode.dynamicNode = newWildcardNode
 						currentNode = newWildcardNode
 						isNewNode = true
@@ -163,7 +165,7 @@ func (this *QNode) createChildNode(path string, isStaticOnly bool, lastNodeType 
 					if foundNode != nil {
 						currentNode = foundNode
 					} else {
-						newStaticNode := newNode(part, vNodeStatic)
+						newStaticNode := newNode(part, vNodeTypeStatic)
 						currentNode.staticNodes = append(currentNode.staticNodes, newStaticNode)
 						currentNode = newStaticNode
 						isNewNode = true
@@ -175,20 +177,20 @@ func (this *QNode) createChildNode(path string, isStaticOnly bool, lastNodeType 
 		}
 		part += path[i : i+1]
 	}
-	if lastNodeType == vNodeFileServer {
+	if lastNodeType == vNodeTypeFileServer {
 		if !isStaticOnly {
 			panic("File server node requires a static-only route")
 		}
-		if currentNode.nodeType == vNodeParam || currentNode.nodeType == vNodeWildcard {
+		if currentNode.nodeType == vNodeTypeParam || currentNode.nodeType == vNodeTypeWildcard {
 			panic("File server route must end with a static segment")
 		}
 		if !isNewNode {
-			if (currentNode.nodeType != vNodeStatic && currentNode.nodeType != vNodeNone) || len(currentNode.staticNodes) != 0 || currentNode.dynamicNode != nil || len(currentNode.handlerFuncMap) != 0 {
+			if (currentNode.nodeType != vNodeTypeStatic && currentNode.nodeType != vNodeTypeNone) || len(currentNode.staticNodes) != 0 || currentNode.dynamicNode != nil || len(currentNode.handlerFuncMap) != 0 {
 				panic("Static route conflicts with an existing route")
 			}
 		}
-		currentNode.nodeType = vNodeFileServer
-	} else if isNewNode && currentNode.nodeType == vNodeStatic {
+		currentNode.nodeType = vNodeTypeFileServer
+	} else if isNewNode && currentNode.nodeType == vNodeTypeStatic {
 		currentNode.nodeType = lastNodeType
 	}
 	return currentNode
@@ -205,7 +207,7 @@ func (this *QNode) getMethodHandler(method string, path string) (*QNode, THandle
 		if start < i {
 			part := path[start:i]
 
-			if currentNode.nodeType == vNodeFileServer {
+			if currentNode.nodeType == vNodeTypeFileServer {
 				if paramMap == nil {
 					paramMap = make(TValues)
 				}
@@ -223,7 +225,7 @@ func (this *QNode) getMethodHandler(method string, path string) (*QNode, THandle
 			if foundStaticNode != nil {
 				currentNode = foundStaticNode
 
-				if currentNode.nodeType == vNodeFileServer {
+				if currentNode.nodeType == vNodeTypeFileServer {
 					if paramMap == nil {
 						paramMap = make(TValues)
 					}
@@ -235,13 +237,13 @@ func (this *QNode) getMethodHandler(method string, path string) (*QNode, THandle
 			} else if currentNode.dynamicNode != nil {
 				dynamicNode := currentNode.dynamicNode
 
-				if dynamicNode.nodeType == vNodeParam {
+				if dynamicNode.nodeType == vNodeTypeParam {
 					if paramMap == nil {
 						paramMap = make(TValues)
 					}
 					paramMap[dynamicNode.name] = append(paramMap[dynamicNode.name], part)
 					currentNode = dynamicNode
-				} else if dynamicNode.nodeType == vNodeWildcard {
+				} else if dynamicNode.nodeType == vNodeTypeWildcard {
 					if paramMap == nil {
 						paramMap = make(TValues)
 					}

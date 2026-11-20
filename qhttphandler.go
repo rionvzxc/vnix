@@ -16,7 +16,7 @@ func (this *qHttpHandler) ServeHTTP(hRes http.ResponseWriter, hReq *http.Request
 		ctx.send()
 		return
 	}
-	if currentNode != nil && currentNode.nodeType == vNodeFileServer {
+	if currentNode != nil && currentNode.nodeType == vNodeTypeFileServer {
 		http.Error(hRes, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}

@@ -13,7 +13,7 @@ type QHttpServer struct {
 // New creates an HTTP server with an empty route tree.
 func New() *QHttpServer {
 	return &QHttpServer{
-		QNode: newNode("", vNodeStatic),
+		QNode: newNode("", vNodeTypeStatic),
 	}
 }
 

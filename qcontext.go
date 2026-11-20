@@ -15,11 +15,11 @@ import (
 type tBodyType uint8
 
 const (
-	bodyTypeNone tBodyType = iota
-	bodyTypeRaw
-	bodyTypeText
-	bodyTypeJSON
-	bodyTypeFile
+	vBodyTypeNone tBodyType = iota
+	vBodyTypeRaw
+	vBodyTypeText
+	vBodyTypeJSON
+	vBodyTypeFile
 )
 
 var errBodyAlreadyRead = errors.New("request body has already been read")
@@ -56,7 +56,7 @@ func newContext(hReq *http.Request, hRes http.ResponseWriter, reqParam TValues) 
 		reqParam:     reqParam,
 		resHeader:    make(THeader),
 		statusCode:   http.StatusOK,
-		bodyType:     bodyTypeNone,
+		bodyType:     vBodyTypeNone,
 	}
 }
 // Param returns the first route parameter value for name or defaultValue.
@@ -282,19 +282,19 @@ func (this *QContext) Files(name string) ([]*QFile, error) {
 }
 // SetData sets the response body to raw bytes.
 func (this *QContext) SetData(data []byte) {
-	this.bodyType = bodyTypeRaw
+	this.bodyType = vBodyTypeRaw
 	this.bodyDataRaw = data
 	this.bodyFilePath = ""
 }
 // SetText sets the response body to plain text.
 func (this *QContext) SetText(data string) {
-	this.bodyType = bodyTypeText
+	this.bodyType = vBodyTypeText
 	this.bodyDataText = data
 	this.bodyFilePath = ""
 }
 // SetHTML sets the response body with an HTML content type.
 func (this *QContext) SetHTML(data string) {
-	this.bodyType = bodyTypeText
+	this.bodyType = vBodyTypeText
 	this.bodyDataText = data
 	this.bodyFilePath = ""
 	this.resHeader.Set("Content-Type", "text/html; charset=utf-8")
@@ -305,7 +305,7 @@ func (this *QContext) SetTextF(format string, args ...any) {
 }
 // SetJSON sets any value as the JSON response body and configures its content type.
 func (this *QContext) SetJSON(data any) {
-	this.bodyType = bodyTypeJSON
+	this.bodyType = vBodyTypeJSON
 	this.bodyDataJSON = data
 	this.bodyFilePath = ""
 
@@ -328,7 +328,7 @@ func (this *QContext) setFile(path string, download bool) error {
 	if !fileInfo.Mode().IsRegular() {
 		return fmt.Errorf("vnix: %q is not a regular file", path)
 	}
-	this.bodyType = bodyTypeFile
+	this.bodyType = vBodyTypeFile
 	this.bodyFilePath = path
 	contentType := mime.TypeByExtension(filepath.Ext(path))
 
@@ -368,11 +368,11 @@ func (this *QContext) send() error {
 	var file *os.File
 
 	switch this.bodyType {
-	case bodyTypeRaw:
+	case vBodyTypeRaw:
 		body = this.bodyDataRaw
-	case bodyTypeText:
+	case vBodyTypeText:
 		body = []byte(this.bodyDataText)
-	case bodyTypeJSON:
+	case vBodyTypeJSON:
 		var err error
 		body, err = json.Marshal(this.bodyDataJSON)
 
@@ -380,7 +380,7 @@ func (this *QContext) send() error {
 			http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return err
 		}
-	case bodyTypeFile:
+	case vBodyTypeFile:
 		var err error
 		file, err = os.Open(this.bodyFilePath)
 

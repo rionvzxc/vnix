@@ -136,8 +136,8 @@ func TestFileServerDirectoryServesFiles(t *testing.T) {
 	}
 	app := New()
 	staticNode := app.FileServer("/assets", directory)
-	if staticNode.nodeType != vNodeFileServer {
-		t.Fatalf("static node type = %d, want vNodeFileServer", staticNode.nodeType)
+	if staticNode.nodeType != vNodeTypeFileServer {
+		t.Fatalf("static node type = %d, want vNodeTypeFileServer", staticNode.nodeType)
 	}
 	handler := &qHttpHandler{rootNode: app.QNode}
 
@@ -311,8 +311,8 @@ func TestHandleIgnoresEmptyMethod(t *testing.T) {
 	}
 }
 func TestUnknownDynamicNodeTypeDoesNotMatch(t *testing.T) {
-	root := newNode("", vNodeStatic)
-	root.dynamicNode = newNode("unknown", TNodeType(99))
+	root := newNode("", vNodeTypeStatic)
+	root.dynamicNode = newNode("unknown", tNodeType(99))
 	if node, handler, params := root.getMethodHandler(http.MethodGet, "/value"); node != nil || handler != nil || params != nil {
 		t.Fatalf("unknown node match = (%#v, %#v, %#v), want no match", node, handler, params)
 	}

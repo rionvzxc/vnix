@@ -13,6 +13,3 @@ type TCookie = http.Cookie
 
 // THandlerFunc handles an HTTP request through a QContext.
 type THandlerFunc func(*QContext)
-
-// TNodeType identifies the kind of route node.
-type TNodeType uint
