@@ -154,23 +154,7 @@ func (this *QNode) createChildNode(path string, isStaticOnly bool, lastNodeType 
 					}
 					return currentNode
 				} else {
-					var foundNode *QNode
-
-					for _, node := range currentNode.staticNodes {
-						if node.name == part {
-							foundNode = node
-							break
-						}
-					}
-					if foundNode != nil {
-						currentNode = foundNode
-					} else {
-						newStaticNode := newNode(part, vNodeTypeStatic)
-						newStaticNode.parentNode = currentNode
-						currentNode.staticNodes = append(currentNode.staticNodes, newStaticNode)
-						currentNode = newStaticNode
-						isNewNode = true
-					}
+					currentNode, isNewNode = currentNode.addStaticNode(part)
 				}
 				part = ""
 			}
@@ -215,14 +199,8 @@ func (this *QNode) getMethodHandler(method string, path string) (*QNode, THandle
 				paramMap["file_server_path"] = append(paramMap["file_server_path"], path[start:])
 				return currentNode, currentNode.handlerFuncMap[method], paramMap
 			}
-			var foundStaticNode *QNode
+			foundStaticNode := currentNode.getStaticNode(part)
 
-			for _, node := range currentNode.staticNodes {
-				if node.name == part {
-					foundStaticNode = node
-					break
-				}
-			}
 			if foundStaticNode != nil {
 				currentNode = foundStaticNode
 
