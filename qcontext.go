@@ -296,6 +296,7 @@ func (this *QContext) SetText(data string) {
 	this.bodyType = vBodyTypeText
 	this.bodyDataText = data
 	this.bodyFilePath = ""
+	this.resHeader.Set("Content-Type", "text/plain; charset=utf-8")
 }
 // SetHTML sets the response body with an HTML content type.
 func (this *QContext) SetHTML(data string) {

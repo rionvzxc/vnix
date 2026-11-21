@@ -34,8 +34,7 @@ func newNode(name string, nodeType tNodeType) *QNode {
 }
 // GET registers handler for GET requests at path.
 func (this *QNode) GET(path string, handler THandlerFunc) *QNode {
-	this.Handle("GET", path, handler)
-	return this
+	return this.Handle("GET", path, handler)
 }
 // POST registers handler for POST requests at path.
 func (this *QNode) POST(path string, handler THandlerFunc) *QNode {

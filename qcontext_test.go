@@ -805,3 +805,66 @@ func TestQFileSave(t *testing.T) {
 		t.Fatalf("Save() should return an error for a missing destination directory")
 	}
 }
+
+func TestSetTextUsesPlainTextContentType(t *testing.T) {
+	for _, body := range []string{"<script>alert(1)</script>", `{"ok":true}`, ""} {
+		app := New()
+		app.GET("/", func(ctx *QContext) { ctx.SetText(body) })
+		response := performRequest(&qHttpHandler{rootNode: app.QNode}, http.MethodGet, "/")
+		if response.Header().Get("Content-Type") != "text/plain; charset=utf-8" || response.Body.String() != body {
+			t.Fatalf("response = (%q, %q), want plain text body %q", response.Header().Get("Content-Type"), response.Body.String(), body)
+		}
+	}
+}
+
+func TestTextReplacesPreviousContentType(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		set  func(*QContext)
+	}{
+		{"json", func(ctx *QContext) { ctx.SetJSON(TMap{"ok": true}) }},
+		{"html", func(ctx *QContext) { ctx.SetHTML("<h1>hello</h1>") }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, formatted := range []bool{false, true} {
+				app := New()
+				app.GET("/", func(ctx *QContext) {
+					tt.set(ctx)
+					if formatted {
+						ctx.SetTextF("error-%d", 1)
+					} else {
+						ctx.SetText("error-1")
+					}
+				})
+				response := performRequest(&qHttpHandler{rootNode: app.QNode}, http.MethodGet, "/")
+				if response.Header().Get("Content-Type") != "text/plain; charset=utf-8" || response.Body.String() != "error-1" {
+					t.Fatalf("response = (%q, %q), want plain text error-1", response.Header().Get("Content-Type"), response.Body.String())
+				}
+			}
+		})
+	}
+}
+
+func TestContentTypeCanBeChangedAfterSetText(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		set  func(*QContext)
+		want string
+	}{
+		{"json", func(ctx *QContext) { ctx.SetJSON(TMap{"ok": true}) }, "application/json; charset=utf-8"},
+		{"html", func(ctx *QContext) { ctx.SetHTML("<h1>hello</h1>") }, "text/html; charset=utf-8"},
+		{"custom", func(ctx *QContext) { ctx.SetHeader("Content-Type", "text/csv") }, "text/csv"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			app := New()
+			app.GET("/", func(ctx *QContext) {
+				ctx.SetText("initial")
+				tt.set(ctx)
+			})
+			response := performRequest(&qHttpHandler{rootNode: app.QNode}, http.MethodGet, "/")
+			if response.Header().Get("Content-Type") != tt.want {
+				t.Fatalf("Content-Type = %q, want %q", response.Header().Get("Content-Type"), tt.want)
+			}
+		})
+	}
+}

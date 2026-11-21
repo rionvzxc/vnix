@@ -362,3 +362,27 @@ func TestUnknownDynamicNodeTypeDoesNotMatch(t *testing.T) {
 		t.Fatalf("unknown node match = (%#v, %#v, %#v), want no match", node, handler, params)
 	}
 }
+
+func TestGETReturnsEndpointNode(t *testing.T) {
+	for _, prefix := range []string{"", "/api"} {
+		t.Run(prefix, func(t *testing.T) {
+			app := New()
+			group := app.Group(prefix)
+			node := group.GET("/private", func(ctx *QContext) { ctx.SetText("private") })
+			if node == group || node != group.Group("/private") {
+				t.Fatal("GET must return the registered endpoint node")
+			}
+			node.UseMiddleware(func(ctx *QContext) { ctx.AbortWithStatus(http.StatusUnauthorized) })
+			group.GET("/public", func(ctx *QContext) { ctx.SetText("public") })
+			handler := &qHttpHandler{rootNode: app.QNode}
+			private := performRequest(handler, http.MethodGet, prefix+"/private")
+			if private.Code != http.StatusUnauthorized {
+				t.Fatalf("private status = %d, want 401", private.Code)
+			}
+			public := performRequest(handler, http.MethodGet, prefix+"/public")
+			if public.Code != http.StatusOK || public.Body.String() != "public" {
+				t.Fatalf("public response = (%d, %q), want (200, public)", public.Code, public.Body.String())
+			}
+		})
+	}
+}
