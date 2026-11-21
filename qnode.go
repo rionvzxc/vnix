@@ -66,10 +66,6 @@ func (this *QNode) FileServer(routePath string, directory string) *QNode {
 		}
 		filePath := filepath.Join(directory, relativePath)
 
-		if ctx.httpRequest.Method == http.MethodHead {
-			http.ServeFile(ctx.httpResponse, ctx.httpRequest, filePath)
-			return
-		}
 		if err := ctx.SetFile(filePath); err != nil {
 			ctx.StatusCode(http.StatusNotFound)
 			ctx.SetText(http.StatusText(http.StatusNotFound))

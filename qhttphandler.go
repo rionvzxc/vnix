@@ -2,6 +2,8 @@ package vnix
 
 import (
 	"net/http"
+	"sort"
+	"strings"
 )
 
 type qHttpHandler struct {
@@ -17,13 +19,20 @@ func (this *qHttpHandler) ServeHTTP(hRes http.ResponseWriter, hReq *http.Request
 		ctx.send()
 		return
 	}
-	if currentNode != nil && currentNode.nodeType == vNodeTypeFileServer {
-		http.Error(hRes, "405 Method Not Allowed", http.StatusMethodNotAllowed)
-		return
-	}
+	var allowedMethods []string
+
 	if currentNode != nil {
-		http.Error(hRes, "405 Method Not Allowed", http.StatusMethodNotAllowed)
+		for method, handler := range currentNode.handlerFuncMap {
+			if handler != nil {
+				allowedMethods = append(allowedMethods, method)
+			}
+		}
+	}
+	if len(allowedMethods) == 0 {
+		http.Error(hRes, "404 Not Found", http.StatusNotFound)
 		return
 	}
-	http.Error(hRes, "404 Not Found", http.StatusNotFound)
+	sort.Strings(allowedMethods)
+	hRes.Header().Set("Allow", strings.Join(allowedMethods, ", "))
+	http.Error(hRes, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 }

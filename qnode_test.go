@@ -164,6 +164,51 @@ func TestFileServerDirectoryServesFiles(t *testing.T) {
 		t.Fatalf("grouped static response = (%d, %q)", response.Code, response.Body.String())
 	}
 }
+
+type countingResponseWriter struct {
+	*httptest.ResponseRecorder
+	statusWrites int
+}
+
+func (this *countingResponseWriter) WriteHeader(status int) {
+	this.statusWrites++
+	this.ResponseRecorder.WriteHeader(status)
+}
+
+func TestFileServerHeadMatchesGet(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "hello.txt"), []byte("static file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(directory, "subdir"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	app := New()
+	app.FileServer("/assets", directory)
+	handler := &qHttpHandler{rootNode: app.QNode}
+	for _, path := range []string{"/assets/hello.txt", "/assets/subdir", "/assets/subdir/", "/assets", "/assets/", "/assets/missing.txt"} {
+		t.Run(path, func(t *testing.T) {
+			get := performRequest(handler, http.MethodGet, path)
+			head := &countingResponseWriter{ResponseRecorder: httptest.NewRecorder()}
+			handler.ServeHTTP(head, httptest.NewRequest(http.MethodHead, path, nil))
+			if head.Code != get.Code || head.Body.Len() != 0 || head.statusWrites != 1 {
+				t.Fatalf("HEAD = (%d, %q, %d status writes), GET status = %d", head.Code, head.Body.String(), head.statusWrites, get.Code)
+			}
+			for _, key := range []string{"Content-Type", "Content-Length"} {
+				if head.Header().Get(key) != get.Header().Get(key) {
+					t.Fatalf("%s HEAD = %q, GET = %q", key, head.Header().Get(key), get.Header().Get(key))
+				}
+			}
+			if path == "/assets/hello.txt" {
+				if get.Code != http.StatusOK || head.Header().Get("Content-Length") != "11" {
+					t.Fatalf("file response = %d, length = %q", get.Code, head.Header().Get("Content-Length"))
+				}
+			} else if get.Code != http.StatusNotFound {
+				t.Fatalf("directory or missing file status = %d", get.Code)
+			}
+		})
+	}
+}
 func TestStaticRejectsUsedRouteNode(t *testing.T) {
 	tests := []struct {
 		name  string

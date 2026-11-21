@@ -236,6 +236,54 @@ func TestInvalidJSONResponseReturnsServerError(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
 	}
 }
+
+func TestHeadResponseContentLength(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		set  func(*QContext)
+		want string
+	}{
+		{"text", func(ctx *QContext) { ctx.SetText("café") }, "5"},
+		{"json", func(ctx *QContext) { ctx.SetJSON(TMap{"ok": true}) }, "11"},
+		{"raw", func(ctx *QContext) { ctx.SetData([]byte{0, 1, 2}) }, "3"},
+		{"empty", func(*QContext) {}, "0"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, method := range []string{http.MethodGet, http.MethodHead} {
+				response := httptest.NewRecorder()
+				ctx := newContext(httptest.NewRequest(method, "/", nil), response, nil)
+				tt.set(ctx)
+				if err := ctx.send(); err != nil {
+					t.Fatal(err)
+				}
+				if got := response.Header().Get("Content-Length"); got != tt.want {
+					t.Fatalf("%s length = %q, want %q", method, got, tt.want)
+				}
+				if method == http.MethodHead && response.Body.Len() != 0 {
+					t.Fatal("HEAD response must have no body")
+				}
+			}
+		})
+	}
+}
+
+func TestBodylessResponseStatuses(t *testing.T) {
+	for _, status := range []int{http.StatusNoContent, http.StatusNotModified} {
+		response := httptest.NewRecorder()
+		ctx := newContext(httptest.NewRequest(http.MethodGet, "/", nil), response, nil)
+		ctx.StatusCode(status)
+		ctx.SetText("must not be sent")
+		if status == http.StatusNoContent {
+			ctx.SetHeader("Content-Length", "16")
+		}
+		if err := ctx.send(); err != nil {
+			t.Fatal(err)
+		}
+		if response.Body.Len() != 0 || response.Header().Get("Content-Length") != "" {
+			t.Fatalf("status %d body = %q, length = %q", status, response.Body.String(), response.Header().Get("Content-Length"))
+		}
+	}
+}
 func TestFormReadsURLEncodedData(t *testing.T) {
 	form := url.Values{"id": {"42"}, "name": {"vnix"}}
 	request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(form.Encode()))

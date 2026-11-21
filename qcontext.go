@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 type tBodyType uint8
@@ -370,6 +371,7 @@ func (this *QContext) send() error {
 	writer := this.httpResponse
 	var body []byte
 	var file *os.File
+	var fileSize int64
 
 	switch this.bodyType {
 	case vBodyTypeRaw:
@@ -393,6 +395,13 @@ func (this *QContext) send() error {
 			return err
 		}
 		defer file.Close()
+		info, err := file.Stat()
+
+		if err != nil {
+			http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return err
+		}
+		fileSize = info.Size()
 	}
 	header := writer.Header()
 
@@ -404,8 +413,27 @@ func (this *QContext) send() error {
 			http.SetCookie(writer, cookie)
 		}
 	}
+	bodyAllowed := this.statusCode >= 200 && this.statusCode != http.StatusNoContent && this.statusCode != http.StatusNotModified
+
+	if this.statusCode < 200 || this.statusCode == http.StatusNoContent {
+		header.Del("Content-Length")
+	} else if bodyAllowed {
+		contentLength := int64(len(body))
+
+		if file != nil {
+			contentLength = fileSize
+		}
+		header.Set("Content-Length", strconv.FormatInt(contentLength, 10))
+
+		if len(body) > 0 && header.Get("Content-Type") == "" {
+			header.Set("Content-Type", http.DetectContentType(body))
+		}
+	}
 	writer.WriteHeader(this.statusCode)
 
+	if this.httpRequest.Method == http.MethodHead || !bodyAllowed {
+		return nil
+	}
 	if file != nil {
 		_, err := io.Copy(writer, file)
 		return err
