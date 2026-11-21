@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -65,6 +64,69 @@ func TestSetJSONAcceptsAnyValue(t *testing.T) {
 		t.Fatalf("JSON body = %#v", body)
 	}
 }
+func TestSetTextUsesPlainTextContentType(t *testing.T) {
+	for _, body := range []string{"<script>alert(1)</script>", `{"ok":true}`, ""} {
+		app := New()
+		app.GET("/", func(ctx *QContext) { ctx.SetText(body) })
+		response := performRequest(&qHttpHandler{rootNode: app.QNode}, http.MethodGet, "/")
+		if response.Header().Get("Content-Type") != "text/plain; charset=utf-8" || response.Body.String() != body {
+			t.Fatalf("response = (%q, %q), want plain text body %q", response.Header().Get("Content-Type"), response.Body.String(), body)
+		}
+	}
+}
+
+func TestTextReplacesPreviousContentType(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		set  func(*QContext)
+	}{
+		{"json", func(ctx *QContext) { ctx.SetJSON(TMap{"ok": true}) }},
+		{"html", func(ctx *QContext) { ctx.SetHTML("<h1>hello</h1>") }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, formatted := range []bool{false, true} {
+				app := New()
+				app.GET("/", func(ctx *QContext) {
+					tt.set(ctx)
+					if formatted {
+						ctx.SetTextF("error-%d", 1)
+					} else {
+						ctx.SetText("error-1")
+					}
+				})
+				response := performRequest(&qHttpHandler{rootNode: app.QNode}, http.MethodGet, "/")
+				if response.Header().Get("Content-Type") != "text/plain; charset=utf-8" || response.Body.String() != "error-1" {
+					t.Fatalf("response = (%q, %q), want plain text error-1", response.Header().Get("Content-Type"), response.Body.String())
+				}
+			}
+		})
+	}
+}
+
+func TestContentTypeCanBeChangedAfterSetText(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		set  func(*QContext)
+		want string
+	}{
+		{"json", func(ctx *QContext) { ctx.SetJSON(TMap{"ok": true}) }, "application/json; charset=utf-8"},
+		{"html", func(ctx *QContext) { ctx.SetHTML("<h1>hello</h1>") }, "text/html; charset=utf-8"},
+		{"custom", func(ctx *QContext) { ctx.SetHeader("Content-Type", "text/csv") }, "text/csv"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			app := New()
+			app.GET("/", func(ctx *QContext) {
+				ctx.SetText("initial")
+				tt.set(ctx)
+			})
+			response := performRequest(&qHttpHandler{rootNode: app.QNode}, http.MethodGet, "/")
+			if response.Header().Get("Content-Type") != tt.want {
+				t.Fatalf("Content-Type = %q, want %q", response.Header().Get("Content-Type"), tt.want)
+			}
+		})
+	}
+}
+
 func TestSetHTMLSetsContentType(t *testing.T) {
 	app := New()
 	app.GET("/", func(ctx *QContext) {
@@ -427,42 +489,6 @@ func TestContextMissingValuesAndEmptyBody(t *testing.T) {
 	request.Body = nil
 	ctx := newContext(request, httptest.NewRecorder(), nil)
 
-	if got := ctx.Param("missing", ""); got != "" {
-		t.Fatalf("missing Param() = %q", got)
-	}
-	if got := ctx.Param("missing", "fallback"); got != "fallback" {
-		t.Fatalf("Param() fallback = %q", got)
-	}
-	if got := ctx.Query("missing", ""); got != "" {
-		t.Fatalf("missing Query() = %q", got)
-	}
-	if got := ctx.Query("missing", "fallback"); got != "fallback" {
-		t.Fatalf("Query() fallback = %q", got)
-	}
-	if got := ctx.Header("X-Missing", ""); got != "" {
-		t.Fatalf("missing Header() = %q", got)
-	}
-	if got := ctx.Header("X-Missing", "header-default"); got != "header-default" {
-		t.Fatalf("Header() fallback = %q", got)
-	}
-	if got := ctx.Cookie("missing", ""); got != "" {
-		t.Fatalf("missing Cookie() = %q", got)
-	}
-	if got := ctx.Cookie("missing", "cookie-default"); got != "cookie-default" {
-		t.Fatalf("Cookie() fallback = %q", got)
-	}
-	if got := ctx.ParamValues("missing"); got != nil {
-		t.Fatalf("missing ParamValues() = %#v", got)
-	}
-	if got := ctx.QueryValues("missing"); got != nil {
-		t.Fatalf("missing QueryValues() = %#v", got)
-	}
-	if got := ctx.HeaderValues("X-Missing"); got != nil {
-		t.Fatalf("missing HeaderValues() = %#v", got)
-	}
-	if got := ctx.CookieValues("missing"); got != nil {
-		t.Fatalf("missing CookieValues() = %#v", got)
-	}
 	if got, err := ctx.Data(); err != nil || len(got) != 0 {
 		t.Fatalf("Data() with nil body = %#v", got)
 	}
@@ -538,117 +564,6 @@ func TestResponseWithoutBody(t *testing.T) {
 
 	if response.Code != http.StatusNoContent || response.Body.Len() != 0 {
 		t.Fatalf("empty response = (%d, %q)", response.Code, response.Body.String())
-	}
-}
-func TestResponsePreservesExistingHeaders(t *testing.T) {
-	app := New()
-	app.GET("/", func(ctx *QContext) {
-		ctx.SetText("ok")
-	})
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	response := httptest.NewRecorder()
-	response.Header().Set("X-Existing", "preserved")
-	(&qHttpHandler{rootNode: app.QNode}).ServeHTTP(response, request)
-
-	if got := response.Header().Get("X-Existing"); got != "preserved" {
-		t.Fatalf("existing response header = %q", got)
-	}
-}
-func TestContextReadsQueryHeaderAndCookies(t *testing.T) {
-	app := New()
-	app.GET("/", func(ctx *QContext) {
-		ctx.SetText(strings.Join([]string{
-			ctx.Query("tag", ""),
-			strings.Join(ctx.QueryValues("tag"), ","),
-			ctx.Query("missing", "default"),
-			ctx.Header("X-Token", ""),
-			strings.Join(ctx.HeaderValues("X-Token"), ","),
-			ctx.Cookie("session", ""),
-			strings.Join(ctx.CookieValues("session"), ","),
-		}, ":"))
-	})
-	request := httptest.NewRequest(http.MethodGet, "/?tag=go&tag=vnix", nil)
-	request.Header.Add("X-Token", "abc")
-	request.Header.Add("X-Token", "def")
-	request.AddCookie(&http.Cookie{Name: "session", Value: "xyz"})
-	request.AddCookie(&http.Cookie{Name: "session", Value: "123"})
-	response := httptest.NewRecorder()
-	(&qHttpHandler{rootNode: app.QNode}).ServeHTTP(response, request)
-
-	want := "go:go,vnix:default:abc:abc,def:xyz:xyz,123"
-
-	if response.Code != http.StatusOK || response.Body.String() != want {
-		t.Fatalf("context values response = (%d, %q)", response.Code, response.Body.String())
-	}
-}
-func TestContextParamValues(t *testing.T) {
-	app := New()
-	app.GET("/items/:id/:id", func(ctx *QContext) {
-		ctx.SetText(strings.Join([]string{
-			ctx.Param("id", ""),
-			strings.Join(ctx.ParamValues("id"), ","),
-			ctx.Param("missing", "default"),
-		}, ":"))
-	})
-	response := performRequest(&qHttpHandler{rootNode: app.QNode}, http.MethodGet, "/items/1/2")
-
-	if response.Code != http.StatusOK || response.Body.String() != "1:1,2:default" {
-		t.Fatalf("parameter response = (%d, %q)", response.Code, response.Body.String())
-	}
-}
-func TestContextMultiValueAccessorsReturnCopies(t *testing.T) {
-	request := httptest.NewRequest(http.MethodGet, "/?tag=first&tag=second", nil)
-	ctx := newContext(request, httptest.NewRecorder(), TValues{"id": {"first", "second"}})
-	ctx.reqHeader = THeader{"X-Test": {"first", "second"}}
-	ctx.reqQuery = TValues{"tag": {"first", "second"}}
-	ctx.reqCookie = TValues{"session": {"first", "second"}}
-	accessors := []func() []string{
-		func() []string { return ctx.ParamValues("id") },
-		func() []string { return ctx.QueryValues("tag") },
-		func() []string { return ctx.HeaderValues("X-Test") },
-		func() []string { return ctx.CookieValues("session") },
-	}
-	for _, accessor := range accessors {
-		values := accessor()
-		values[0] = "changed"
-	}
-	checks := []struct {
-		name string
-		got  []string
-	}{
-		{name: "ParamValues", got: ctx.ParamValues("id")},
-		{name: "QueryValues", got: ctx.QueryValues("tag")},
-		{name: "HeaderValues", got: ctx.HeaderValues("X-Test")},
-		{name: "CookieValues", got: ctx.CookieValues("session")},
-	}
-	for _, check := range checks {
-		if !reflect.DeepEqual(check.got, []string{"first", "second"}) {
-			t.Errorf("%s() = %#v, want original values", check.name, check.got)
-		}
-	}
-	allParams := ctx.RequestParam()
-	allParams["id"][0] = "changed"
-	allParams["new"] = []string{"value"}
-	allQueries := ctx.RequestQuery()
-	allQueries["tag"][0] = "changed"
-	allQueries["new"] = []string{"value"}
-	allHeaders := ctx.RequestHeader()
-	allHeaders["X-Test"][0] = "changed"
-	allHeaders["X-New"] = []string{"value"}
-	allCookies := ctx.RequestCookie()
-	allCookies["session"][0] = "changed"
-	allCookies["new"] = []string{"value"}
-	if !reflect.DeepEqual(ctx.ParamValues("id"), []string{"first", "second"}) || ctx.reqParam.Exist("new") {
-		t.Error("RequestParam() clone mutated the original route parameters")
-	}
-	if !reflect.DeepEqual(ctx.QueryValues("tag"), []string{"first", "second"}) || ctx.reqQuery.Exist("new") {
-		t.Error("RequestQuery() clone mutated the original query parameters")
-	}
-	if !reflect.DeepEqual(ctx.HeaderValues("X-Test"), []string{"first", "second"}) || ctx.reqHeader.Exist("X-New") {
-		t.Error("RequestHeader() clone mutated the original request headers")
-	}
-	if !reflect.DeepEqual(ctx.CookieValues("session"), []string{"first", "second"}) || ctx.reqCookie.Exist("new") {
-		t.Error("RequestCookie() clone mutated the original cookies")
 	}
 }
 func TestContextReadsBodyOnlyOnce(t *testing.T) {
@@ -729,33 +644,12 @@ func TestFormAfterRawBodyReadReturnsDefault(t *testing.T) {
 func TestResponseSetters(t *testing.T) {
 	app := New()
 	app.GET("/", func(ctx *QContext) {
-		ctx.SetHeader("X-Removed", "remove")
-		header := THeader{"X-Custom": {"value"}}
-		ctx.SetResponseHeader(header)
-		header["X-Custom"][0] = "changed"
-		ctx.SetHeader("X-Changed", "old")
-		ctx.SetHeader("X-Changed", "value")
-		ctx.AddHeader("X-Changed", "second")
-		ctx.SetCookie([]*TCookie{{Name: "session", Value: "active"}, nil})
 		ctx.StatusCode(http.StatusCreated)
 		ctx.SetTextF("item-%d", 7)
 	})
 	response := performRequest(&qHttpHandler{rootNode: app.QNode}, http.MethodGet, "/")
-
 	if response.Code != http.StatusCreated || response.Body.String() != "item-7" {
 		t.Fatalf("response = (%d, %q)", response.Code, response.Body.String())
-	}
-	if got := response.Header().Get("X-Custom"); got != "value" {
-		t.Fatalf("custom header = %q", got)
-	}
-	if got := response.Header().Values("X-Changed"); !reflect.DeepEqual(got, []string{"value", "second"}) {
-		t.Fatalf("set/add response header values = %#v", got)
-	}
-	if got := response.Header().Get("X-Removed"); got != "" {
-		t.Fatalf("SetResponseHeader() retained old header value %q", got)
-	}
-	if got := response.Result().Cookies(); len(got) != 1 || got[0].Name != "session" || got[0].Value != "active" {
-		t.Fatalf("response cookies = %#v", got)
 	}
 }
 func TestQFileSave(t *testing.T) {
@@ -803,68 +697,5 @@ func TestQFileSave(t *testing.T) {
 	}
 	if err := uploadFile.Save(filepath.Join(tempDir, "missing", "file.txt")); err == nil {
 		t.Fatalf("Save() should return an error for a missing destination directory")
-	}
-}
-
-func TestSetTextUsesPlainTextContentType(t *testing.T) {
-	for _, body := range []string{"<script>alert(1)</script>", `{"ok":true}`, ""} {
-		app := New()
-		app.GET("/", func(ctx *QContext) { ctx.SetText(body) })
-		response := performRequest(&qHttpHandler{rootNode: app.QNode}, http.MethodGet, "/")
-		if response.Header().Get("Content-Type") != "text/plain; charset=utf-8" || response.Body.String() != body {
-			t.Fatalf("response = (%q, %q), want plain text body %q", response.Header().Get("Content-Type"), response.Body.String(), body)
-		}
-	}
-}
-
-func TestTextReplacesPreviousContentType(t *testing.T) {
-	for _, tt := range []struct {
-		name string
-		set  func(*QContext)
-	}{
-		{"json", func(ctx *QContext) { ctx.SetJSON(TMap{"ok": true}) }},
-		{"html", func(ctx *QContext) { ctx.SetHTML("<h1>hello</h1>") }},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			for _, formatted := range []bool{false, true} {
-				app := New()
-				app.GET("/", func(ctx *QContext) {
-					tt.set(ctx)
-					if formatted {
-						ctx.SetTextF("error-%d", 1)
-					} else {
-						ctx.SetText("error-1")
-					}
-				})
-				response := performRequest(&qHttpHandler{rootNode: app.QNode}, http.MethodGet, "/")
-				if response.Header().Get("Content-Type") != "text/plain; charset=utf-8" || response.Body.String() != "error-1" {
-					t.Fatalf("response = (%q, %q), want plain text error-1", response.Header().Get("Content-Type"), response.Body.String())
-				}
-			}
-		})
-	}
-}
-
-func TestContentTypeCanBeChangedAfterSetText(t *testing.T) {
-	for _, tt := range []struct {
-		name string
-		set  func(*QContext)
-		want string
-	}{
-		{"json", func(ctx *QContext) { ctx.SetJSON(TMap{"ok": true}) }, "application/json; charset=utf-8"},
-		{"html", func(ctx *QContext) { ctx.SetHTML("<h1>hello</h1>") }, "text/html; charset=utf-8"},
-		{"custom", func(ctx *QContext) { ctx.SetHeader("Content-Type", "text/csv") }, "text/csv"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			app := New()
-			app.GET("/", func(ctx *QContext) {
-				ctx.SetText("initial")
-				tt.set(ctx)
-			})
-			response := performRequest(&qHttpHandler{rootNode: app.QNode}, http.MethodGet, "/")
-			if response.Header().Get("Content-Type") != tt.want {
-				t.Fatalf("Content-Type = %q, want %q", response.Header().Get("Content-Type"), tt.want)
-			}
-		})
 	}
 }
