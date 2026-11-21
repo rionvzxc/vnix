@@ -56,7 +56,7 @@ func (this *QNode) PATCH(path string, handler THandlerFunc) *QNode {
 func (this *QNode) FileServer(routePath string, directory string) *QNode {
 	lastNode := this.createChildNode(routePath, true, vNodeTypeFileServer)
 	handler := func(ctx *QContext) {
-		relativePath := filepath.FromSlash(ctx.Param("file_server_path", ""))
+		relativePath := filepath.FromSlash(ctx.reqParam.GetLast("file_server_path"))
 
 		if !filepath.IsLocal(relativePath) {
 			ctx.StatusCode(http.StatusNotFound)
@@ -180,63 +180,87 @@ func (this *QNode) createChildNode(path string, isStaticOnly bool, lastNodeType 
 	return currentNode
 }
 func (this *QNode) getMethodHandler(method string, path string) (*QNode, THandlerFunc, TValues) {
-	var paramMap TValues
-	var start int
-	currentNode := this
+	type routeState struct {
+		node   *QNode
+		path   string
+		params TValues
+	}
+	pending := []routeState{{node: this, path: strings.TrimLeft(path, "/")}}
+	var matchedNode *QNode
+	var matchedParams TValues
 
-	for i := 0; i <= len(path); i++ {
-		if i < len(path) && path[i] != '/' {
-			continue
-		}
-		if start < i {
-			part := path[start:i]
+	for len(pending) > 0 {
+		state := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		currentNode := state.node
+		remainingPath := state.path
+		paramMap := state.params
 
+		for {
 			if currentNode.nodeType == vNodeTypeFileServer {
 				if paramMap == nil {
 					paramMap = make(TValues)
 				}
-				paramMap["file_server_path"] = append(paramMap["file_server_path"], path[start:])
-				return currentNode, currentNode.handlerFuncMap[method], paramMap
+				paramMap["file_server_path"] = append(paramMap["file_server_path"], remainingPath)
+				remainingPath = ""
 			}
-			foundStaticNode := currentNode.getStaticNode(part)
+			remainingPath = strings.TrimLeft(remainingPath, "/")
 
-			if foundStaticNode != nil {
-				currentNode = foundStaticNode
-
-				if currentNode.nodeType == vNodeTypeFileServer {
-					if paramMap == nil {
-						paramMap = make(TValues)
-					}
-					if i < len(path) {
-						paramMap["file_server_path"] = append(paramMap["file_server_path"], path[i+1:])
-					}
-					return currentNode, currentNode.handlerFuncMap[method], paramMap
+			if remainingPath == "" {
+				if handler := currentNode.handlerFuncMap[method]; handler != nil {
+					return currentNode, handler, paramMap
 				}
-			} else if currentNode.dynamicNode != nil {
-				dynamicNode := currentNode.dynamicNode
-
-				if dynamicNode.nodeType == vNodeTypeParam {
-					if paramMap == nil {
-						paramMap = make(TValues)
+				// Keep the highest-priority complete path match for a possible 405.
+				if matchedNode == nil {
+					for _, handler := range currentNode.handlerFuncMap {
+						if handler != nil {
+							matchedNode = currentNode
+							matchedParams = paramMap
+							break
+						}
 					}
-					paramMap[dynamicNode.name] = append(paramMap[dynamicNode.name], part)
+				}
+				break
+			}
+
+			part, rest, _ := strings.Cut(remainingPath, "/")
+			staticNode := currentNode.getStaticNode(part)
+			dynamicNode := currentNode.dynamicNode
+
+			if dynamicNode != nil && (dynamicNode.nodeType == vNodeTypeParam || dynamicNode.nodeType == vNodeTypeWildcard) {
+				dynamicParams := paramMap
+
+				if staticNode != nil {
+					dynamicParams = paramMap.Clone()
+				}
+				if dynamicParams == nil {
+					dynamicParams = make(TValues)
+				}
+				value := part
+				dynamicPath := rest
+
+				if dynamicNode.nodeType == vNodeTypeWildcard {
+					value = remainingPath
+					dynamicPath = ""
+				}
+				dynamicParams[dynamicNode.name] = append(dynamicParams[dynamicNode.name], value)
+
+				if staticNode == nil {
 					currentNode = dynamicNode
-				} else if dynamicNode.nodeType == vNodeTypeWildcard {
-					if paramMap == nil {
-						paramMap = make(TValues)
-					}
-					paramMap[dynamicNode.name] = append(paramMap[dynamicNode.name], path[start:])
-					return dynamicNode, dynamicNode.handlerFuncMap[method], paramMap
-				} else {
-					return nil, nil, nil
+					remainingPath = dynamicPath
+					paramMap = dynamicParams
+					continue
 				}
-			} else {
-				return nil, nil, nil
+				pending = append(pending, routeState{node: dynamicNode, path: dynamicPath, params: dynamicParams})
 			}
+			if staticNode == nil {
+				break
+			}
+			currentNode = staticNode
+			remainingPath = rest
 		}
-		start = i + 1
 	}
-	return currentNode, currentNode.handlerFuncMap[method], paramMap
+	return matchedNode, nil, matchedParams
 }
 func (this *QNode) setMethodHandler(method string, handlerFunc THandlerFunc) {
 	method = strings.TrimSpace(method)

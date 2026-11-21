@@ -42,6 +42,30 @@ func TestUnicodeRoutes(t *testing.T) {
 	}
 }
 
+func TestGETReturnsEndpointNode(t *testing.T) {
+	for _, prefix := range []string{"", "/api"} {
+		t.Run(prefix, func(t *testing.T) {
+			app := New()
+			group := app.Group(prefix)
+			node := group.GET("/private", func(ctx *QContext) { ctx.SetText("private") })
+			if node == group || node != group.Group("/private") {
+				t.Fatal("GET must return the registered endpoint node")
+			}
+			node.UseMiddleware(func(ctx *QContext) { ctx.AbortWithStatus(http.StatusUnauthorized) })
+			group.GET("/public", func(ctx *QContext) { ctx.SetText("public") })
+			handler := &qHttpHandler{rootNode: app.QNode}
+			private := performRequest(handler, http.MethodGet, prefix+"/private")
+			if private.Code != http.StatusUnauthorized {
+				t.Fatalf("private status = %d, want 401", private.Code)
+			}
+			public := performRequest(handler, http.MethodGet, prefix+"/public")
+			if public.Code != http.StatusOK || public.Body.String() != "public" {
+				t.Fatalf("public response = (%d, %q), want (200, public)", public.Code, public.Body.String())
+			}
+		})
+	}
+}
+
 func TestRouteMethodsAndParameters(t *testing.T) {
 	app := New()
 	app.DELETE("/items/:id", func(ctx *QContext) {
@@ -209,6 +233,39 @@ func TestFileServerHeadMatchesGet(t *testing.T) {
 		})
 	}
 }
+func TestFileServerUsesLastPathParameter(t *testing.T) {
+	directory := t.TempDir()
+	for name, body := range map[string]string{"a.txt": "A", "b.txt": "B"} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	app := New()
+	app.FileServer("/:file_server_path/assets", directory)
+	handler := &qHttpHandler{rootNode: app.QNode}
+	for _, tt := range []struct {
+		path   string
+		status int
+		body   string
+	}{
+		{"/a.txt/assets/b.txt", http.StatusOK, "B"},
+		{"/a.txt/assets", http.StatusNotFound, "Not Found"},
+		{"/a.txt/assets/", http.StatusNotFound, "Not Found"},
+		{"/a.txt/assets/missing.txt", http.StatusNotFound, "Not Found"},
+	} {
+		for _, method := range []string{http.MethodGet, http.MethodHead} {
+			response := performRequest(handler, method, tt.path)
+			wantBody := tt.body
+			if method == http.MethodHead {
+				wantBody = ""
+			}
+			if response.Code != tt.status || response.Body.String() != wantBody {
+				t.Fatalf("%s %s = (%d, %q), want (%d, %q)", method, tt.path, response.Code, response.Body.String(), tt.status, wantBody)
+			}
+		}
+	}
+}
+
 func TestStaticRejectsUsedRouteNode(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -360,29 +417,5 @@ func TestUnknownDynamicNodeTypeDoesNotMatch(t *testing.T) {
 	root.dynamicNode = newNode("unknown", tNodeType(99))
 	if node, handler, params := root.getMethodHandler(http.MethodGet, "/value"); node != nil || handler != nil || params != nil {
 		t.Fatalf("unknown node match = (%#v, %#v, %#v), want no match", node, handler, params)
-	}
-}
-
-func TestGETReturnsEndpointNode(t *testing.T) {
-	for _, prefix := range []string{"", "/api"} {
-		t.Run(prefix, func(t *testing.T) {
-			app := New()
-			group := app.Group(prefix)
-			node := group.GET("/private", func(ctx *QContext) { ctx.SetText("private") })
-			if node == group || node != group.Group("/private") {
-				t.Fatal("GET must return the registered endpoint node")
-			}
-			node.UseMiddleware(func(ctx *QContext) { ctx.AbortWithStatus(http.StatusUnauthorized) })
-			group.GET("/public", func(ctx *QContext) { ctx.SetText("public") })
-			handler := &qHttpHandler{rootNode: app.QNode}
-			private := performRequest(handler, http.MethodGet, prefix+"/private")
-			if private.Code != http.StatusUnauthorized {
-				t.Fatalf("private status = %d, want 401", private.Code)
-			}
-			public := performRequest(handler, http.MethodGet, prefix+"/public")
-			if public.Code != http.StatusOK || public.Body.String() != "public" {
-				t.Fatalf("public response = (%d, %q), want (200, public)", public.Code, public.Body.String())
-			}
-		})
 	}
 }
