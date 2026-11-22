@@ -34,9 +34,9 @@ func (this *QContext) BindCookie(value any) error {
 	return bindValues(value, "cookie", this.reqCookie)
 }
 
-// SetCookie sets the cookies to add to the response.
+// SetCookie replaces the response cookie list with a copy of the supplied slice.
 func (this *QContext) SetCookie(cookies []*TCookie) {
-	this.resCookies = cookies
+	this.resCookies = append([]*TCookie(nil), cookies...)
 }
 
 // AddCookie appends cookies to the response without replacing existing cookies.

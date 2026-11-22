@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestContextReadsCookies(t *testing.T) {
@@ -86,6 +87,81 @@ func TestContextSetCookieReplacesAddedCookies(t *testing.T) {
 	cookies := response.Result().Cookies()
 	if len(cookies) != 1 || cookies[0].Name != "new" {
 		t.Fatalf("replaced cookies = %#v", cookies)
+	}
+}
+
+func TestContextSetCookieCopiesSlice(t *testing.T) {
+	cookies := make([]*TCookie, 1, 4)
+	cookies[0] = &TCookie{Name: "theme", Value: "dark"}
+	ctx := newContext(httptest.NewRequest(http.MethodGet, "/", nil), httptest.NewRecorder(), nil)
+	ctx.SetCookie(cookies)
+	cookies[0] = &TCookie{Name: "replaced", Value: "outside"}
+	ctx.AddCookie([]*TCookie{{Name: "session", Value: "private"}})
+	if ctx.resCookies[0].Name != "theme" || cookies[:cap(cookies)][1] != nil {
+		t.Fatal("response cookie list shares storage with the caller")
+	}
+	ctx.SetCookie(nil)
+	if len(ctx.resCookies) != 0 {
+		t.Fatal("SetCookie(nil) must clear the response cookie list")
+	}
+}
+
+func TestContextCookiesAreIsolatedAcrossRequests(t *testing.T) {
+	defaults := make([]*TCookie, 1, 2)
+	defaults[0] = &TCookie{Name: "theme", Value: "dark"}
+	aReady := make(chan struct{})
+	bDone := make(chan struct{})
+	app := New()
+	app.UseMiddleware(func(ctx *QContext) { ctx.SetCookie(defaults) })
+	app.GET("/a", func(ctx *QContext) {
+		ctx.AddCookie([]*TCookie{{Name: "session", Value: "user-a"}})
+		close(aReady)
+		select {
+		case <-bDone:
+		case <-time.After(5 * time.Second):
+			t.Error("request B did not complete its handler")
+		}
+		ctx.SetText("a")
+	})
+	app.GET("/b", func(ctx *QContext) {
+		ctx.AddCookie([]*TCookie{{Name: "session", Value: "user-b"}})
+		close(bDone)
+		ctx.SetText("b")
+	})
+	server := httptest.NewServer(&qHttpHandler{rootNode: app.QNode})
+	defer server.Close()
+	type result struct {
+		response *http.Response
+		err      error
+	}
+	aResult := make(chan result, 1)
+	go func() {
+		response, err := server.Client().Get(server.URL + "/a")
+		aResult <- result{response, err}
+	}()
+	select {
+	case <-aReady:
+	case <-time.After(5 * time.Second):
+		t.Fatal("request A did not start")
+	}
+	bResponse, err := server.Client().Get(server.URL + "/b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bResponse.Body.Close()
+	a := <-aResult
+	if a.err != nil {
+		t.Fatal(a.err)
+	}
+	defer a.response.Body.Close()
+	for _, expected := range []struct {
+		response *http.Response
+		session  string
+	}{{a.response, "user-a"}, {bResponse, "user-b"}} {
+		cookies := expected.response.Cookies()
+		if len(cookies) != 2 || cookies[0].Value != "dark" || cookies[1].Name != "session" || cookies[1].Value != expected.session {
+			t.Fatalf("expected session %q, received %#v", expected.session, cookies)
+		}
 	}
 }
 
