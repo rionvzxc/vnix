@@ -115,6 +115,7 @@ func (this *QContext) send() error {
 	}
 	// A fallback error body replaces the original response and its length.
 	if responseErr != nil {
+		header.Del("Content-Encoding")
 		header.Set("Content-Length", strconv.Itoa(len(body)))
 	}
 	for _, cookie := range this.resCookies {

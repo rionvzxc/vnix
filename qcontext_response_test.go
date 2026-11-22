@@ -1,6 +1,8 @@
 package vnix
 
 import (
+	"bytes"
+	"compress/gzip"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -194,6 +196,64 @@ func TestErrorResponseReplacesExplicitContentLength(t *testing.T) {
 				t.Fatal("explicit response header was lost")
 			}
 		})
+	}
+}
+
+func TestErrorResponseClearsContentEncoding(t *testing.T) {
+	var compressed bytes.Buffer
+	compressor := gzip.NewWriter(&compressed)
+	if _, err := compressor.Write([]byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	if err := compressor.Close(); err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(t.TempDir(), "asset.txt.gz")
+	if err := os.WriteFile(filePath, compressed.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	app := New()
+	app.GET("/", func(ctx *QContext) {
+		if err := ctx.SetFile(filePath); err != nil {
+			t.Error(err)
+			return
+		}
+		ctx.SetHeader("Content-Encoding", "gzip")
+		if ctx.Query("fail", "") == "true" {
+			if err := os.Remove(filePath); err != nil {
+				t.Error(err)
+			}
+		}
+	})
+	server := httptest.NewServer(&qHttpHandler{rootNode: app.QNode})
+	defer server.Close()
+	for _, fail := range []bool{false, true} {
+		url := server.URL
+		if fail {
+			url += "?fail=true"
+		}
+		request, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Keep the response encoded so its actual headers can be inspected.
+		request.Header.Set("Accept-Encoding", "gzip")
+		response, err := server.Client().Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(response.Body)
+		response.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fail {
+			if response.StatusCode != http.StatusInternalServerError || response.Header.Get("Content-Encoding") != "" || string(body) != "Internal Server Error\n" || response.ContentLength != int64(len(body)) {
+				t.Fatalf("fallback response = (%d, %v, %q)", response.StatusCode, response.Header, body)
+			}
+		} else if response.StatusCode != http.StatusOK || response.Header.Get("Content-Encoding") != "gzip" || !bytes.Equal(body, compressed.Bytes()) {
+			t.Fatalf("gzip response = (%d, %v, %q)", response.StatusCode, response.Header, body)
+		}
 	}
 }
 

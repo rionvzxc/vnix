@@ -49,7 +49,10 @@ func (this *QFile) Save(path string) error {
 	if err != nil {
 		return err
 	}
-	defer output.Close()
-	_, err = io.Copy(output, file)
-	return err
+	_, copyErr := io.Copy(output, file)
+	closeErr := output.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
 }
