@@ -79,6 +79,9 @@ func (this *QNode) FileServer(routePath string, directory string) *QNode {
 // Handle registers handler for method at path.
 func (this *QNode) Handle(method string, path string, handler THandlerFunc) *QNode {
 	lastNode := this.Group(path)
+	if lastNode.nodeType == vNodeTypeFileServer {
+		panic("Cannot register a handler on a file server route")
+	}
 	lastNode.setMethodHandler(method, handler)
 	return lastNode
 }
@@ -179,7 +182,7 @@ func (this *QNode) createChildNode(path string, isStaticOnly bool, lastNodeType 
 	}
 	return currentNode
 }
-func (this *QNode) getMethodHandler(method string, path string) (*QNode, THandlerFunc, TValues) {
+func (this *QNode) getMethodHandler(method string, path string) (*QNode, THandlerFunc, TValues, []string) {
 	type routeState struct {
 		node   *QNode
 		path   string
@@ -188,6 +191,7 @@ func (this *QNode) getMethodHandler(method string, path string) (*QNode, THandle
 	pending := []routeState{{node: this, path: strings.TrimLeft(path, "/")}}
 	var matchedNode *QNode
 	var matchedParams TValues
+	var allowedMethods map[string]bool
 
 	for len(pending) > 0 {
 		state := pending[len(pending)-1]
@@ -208,15 +212,18 @@ func (this *QNode) getMethodHandler(method string, path string) (*QNode, THandle
 
 			if remainingPath == "" {
 				if handler := currentNode.handlerFuncMap[method]; handler != nil {
-					return currentNode, handler, paramMap
+					return currentNode, handler, paramMap, nil
 				}
 				// Keep the highest-priority complete path match for a possible 405.
-				if matchedNode == nil {
-					for _, handler := range currentNode.handlerFuncMap {
-						if handler != nil {
+				for method, handler := range currentNode.handlerFuncMap {
+					if handler != nil {
+						if allowedMethods == nil {
+							allowedMethods = make(map[string]bool)
+						}
+						allowedMethods[method] = true
+						if matchedNode == nil {
 							matchedNode = currentNode
 							matchedParams = paramMap
-							break
 						}
 					}
 				}
@@ -260,7 +267,11 @@ func (this *QNode) getMethodHandler(method string, path string) (*QNode, THandle
 			remainingPath = rest
 		}
 	}
-	return matchedNode, nil, matchedParams
+	var methods []string
+	for method := range allowedMethods {
+		methods = append(methods, method)
+	}
+	return matchedNode, nil, matchedParams, methods
 }
 func (this *QNode) setMethodHandler(method string, handlerFunc THandlerFunc) {
 	method = strings.TrimSpace(method)

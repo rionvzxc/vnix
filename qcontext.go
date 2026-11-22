@@ -2,27 +2,12 @@ package vnix
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"mime"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 )
-
-type tBodyType uint8
-
-const (
-	vBodyTypeNone tBodyType = iota
-	vBodyTypeRaw
-	vBodyTypeText
-	vBodyTypeJSON
-	vBodyTypeFile
-)
-
-var errBodyAlreadyRead = errors.New("request body has already been read")
 
 // QContext provides access to an HTTP request and controls its response.
 type QContext struct {
@@ -43,8 +28,9 @@ type QContext struct {
 	bodyDataJSON any
 	bodyFilePath string
 
-	resHeader  THeader
-	resCookies []*TCookie
+	resHeaderDefault THeader
+	resHeader        THeader
+	resCookies       []*TCookie
 
 	statusCode   int
 	handlers     []THandlerFunc
@@ -53,197 +39,16 @@ type QContext struct {
 }
 func newContext(hReq *http.Request, hRes http.ResponseWriter, reqParam TValues) *QContext {
 	return &QContext{
-		httpRequest:  hReq,
-		httpResponse: hRes,
-		reqHeader:    THeader(hReq.Header).Clone(),
-		reqParam:     reqParam,
-		resHeader:    make(THeader),
-		statusCode:   http.StatusOK,
-		bodyType:     vBodyTypeNone,
-		handlerIndex: -1,
+		httpRequest:      hReq,
+		httpResponse:     hRes,
+		reqHeader:        THeader(hReq.Header).Clone(),
+		reqParam:         reqParam,
+		resHeaderDefault: make(THeader),
+		resHeader:        make(THeader),
+		statusCode:       http.StatusOK,
+		bodyType:         vBodyTypeNone,
+		handlerIndex:     -1,
 	}
-}
-// Data reads and returns the raw request body once.
-func (this *QContext) Data() ([]byte, error) {
-	if this.bodyRead {
-		return nil, errBodyAlreadyRead
-	}
-	this.bodyRead = true
-
-	if this.httpRequest.Body == nil {
-		return []byte{}, nil
-	}
-	return io.ReadAll(this.httpRequest.Body)
-}
-// Text reads and returns the request body as text once.
-func (this *QContext) Text() (string, error) {
-	if this.bodyRead {
-		return "", errBodyAlreadyRead
-	}
-	this.bodyRead = true
-
-	if this.httpRequest.Body == nil {
-		return "", nil
-	}
-	rawData, err := io.ReadAll(this.httpRequest.Body)
-	return string(rawData), err
-}
-// BindJSON decodes the request body into value once.
-func (this *QContext) BindJSON(value any) error {
-	if this.bodyRead {
-		return errBodyAlreadyRead
-	}
-	this.bodyRead = true
-
-	if this.httpRequest.Body == nil {
-		return io.EOF
-	}
-	return json.NewDecoder(this.httpRequest.Body).Decode(value)
-}
-// BindForm binds form fields into a struct using form tags.
-func (this *QContext) BindForm(value any) error {
-	if err := this.parseForm(); err != nil {
-		return err
-	}
-	return bindValues(value, "form", TValues(this.httpRequest.PostForm))
-}
-// Form returns the first form value for name or defaultValue.
-func (this *QContext) Form(name string, defaultValue string) string {
-	if err := this.parseForm(); err != nil {
-		return defaultValue
-	}
-	return TValues(this.httpRequest.PostForm).GetDefault(name, defaultValue)
-}
-// FormValues returns a copy of all values for a form field.
-func (this *QContext) FormValues(name string) []string {
-	if err := this.parseForm(); err != nil {
-		return nil
-	}
-	return append([]string(nil), this.httpRequest.PostForm[name]...)
-}
-// RequestForm returns a clone of all parsed form values, or nil if parsing fails.
-func (this *QContext) RequestForm() TValues {
-	if err := this.parseForm(); err != nil {
-		return nil
-	}
-	return TValues(this.httpRequest.PostForm).Clone()
-}
-func (this *QContext) parseForm() error {
-	if this.bodyFormParsed {
-		return this.bodyFormErr
-	}
-	if this.bodyRead {
-		return errBodyAlreadyRead
-	}
-	this.bodyRead = true
-	this.bodyFormParsed = true
-	this.bodyFormErr = this.httpRequest.ParseForm()
-
-	if this.bodyFormErr != nil {
-		return this.bodyFormErr
-	}
-	this.bodyFormErr = this.httpRequest.ParseMultipartForm(32 << 20)
-
-	if this.bodyFormErr == http.ErrNotMultipart {
-		this.bodyFormErr = nil
-	}
-	return this.bodyFormErr
-}
-// File returns the first uploaded file for name.
-func (this *QContext) File(name string) (*QFile, error) {
-	files, err := this.Files(name)
-
-	if err != nil {
-		return nil, err
-	}
-	return files[0], nil
-}
-// Files returns all uploaded files for name.
-func (this *QContext) Files(name string) ([]*QFile, error) {
-	if err := this.parseForm(); err != nil {
-		return nil, err
-	}
-	if this.httpRequest.MultipartForm == nil {
-		return nil, http.ErrNotMultipart
-	}
-	fileHeaders := this.httpRequest.MultipartForm.File[name]
-
-	if len(fileHeaders) == 0 {
-		return nil, http.ErrMissingFile
-	}
-	files := make([]*QFile, len(fileHeaders))
-
-	for i, fileHeader := range fileHeaders {
-		files[i] = &QFile{fileHeader: fileHeader}
-	}
-	return files, nil
-}
-// SetData sets the response body to raw bytes.
-func (this *QContext) SetData(data []byte) {
-	this.bodyType = vBodyTypeRaw
-	this.bodyDataRaw = data
-	this.bodyFilePath = ""
-}
-// SetText sets the response body to plain text.
-func (this *QContext) SetText(data string) {
-	this.bodyType = vBodyTypeText
-	this.bodyDataText = data
-	this.bodyFilePath = ""
-	this.resHeader.Set("Content-Type", "text/plain; charset=utf-8")
-}
-// SetHTML sets the response body with an HTML content type.
-func (this *QContext) SetHTML(data string) {
-	this.bodyType = vBodyTypeText
-	this.bodyDataText = data
-	this.bodyFilePath = ""
-	this.resHeader.Set("Content-Type", "text/html; charset=utf-8")
-}
-// SetTextF formats and sets the response body to plain text.
-func (this *QContext) SetTextF(format string, args ...any) {
-	this.SetText(fmt.Sprintf(format, args...))
-}
-// SetJSON sets any value as the JSON response body and configures its content type.
-func (this *QContext) SetJSON(data any) {
-	this.bodyType = vBodyTypeJSON
-	this.bodyDataJSON = data
-	this.bodyFilePath = ""
-
-	this.resHeader.Set("Content-Type", "application/json; charset=utf-8")
-}
-// SetFile sets a file as the response body and detects its content type from its extension.
-func (this *QContext) SetFile(path string) error {
-	return this.setFile(path, false)
-}
-// SetDownload sets a file as an attachment and detects its content type from its extension.
-func (this *QContext) SetDownload(path string) error {
-	return this.setFile(path, true)
-}
-func (this *QContext) setFile(path string, download bool) error {
-	fileInfo, err := os.Stat(path)
-
-	if err != nil {
-		return err
-	}
-	if !fileInfo.Mode().IsRegular() {
-		return fmt.Errorf("vnix: %q is not a regular file", path)
-	}
-	this.bodyType = vBodyTypeFile
-	this.bodyFilePath = path
-	contentType := mime.TypeByExtension(filepath.Ext(path))
-
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
-	this.resHeader.Set("Content-Type", contentType)
-
-	if download {
-		this.resHeader.Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{
-			"filename": filepath.Base(path),
-		}))
-	} else {
-		this.resHeader.Del("Content-Disposition")
-	}
-	return nil
 }
 // StatusCode sets the HTTP status code for the response.
 func (this *QContext) StatusCode(code int) {
@@ -254,75 +59,87 @@ func (this *QContext) send() error {
 	var body []byte
 	var file *os.File
 	var fileSize int64
+	var responseErr error
+	bodyAllowed := this.statusCode >= 200 && this.statusCode != http.StatusNoContent && this.statusCode != http.StatusResetContent && this.statusCode != http.StatusNotModified
+	bodyType := this.bodyType
+	if !bodyAllowed {
+		bodyType = vBodyTypeNone
+	}
 
-	switch this.bodyType {
+	switch bodyType {
 	case vBodyTypeRaw:
 		body = this.bodyDataRaw
 	case vBodyTypeText:
 		body = []byte(this.bodyDataText)
 	case vBodyTypeJSON:
-		var err error
-		body, err = json.Marshal(this.bodyDataJSON)
-
-		if err != nil {
-			http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return err
-		}
+		body, responseErr = json.Marshal(this.bodyDataJSON)
 	case vBodyTypeFile:
-		var err error
-		file, err = os.Open(this.bodyFilePath)
-
-		if err != nil {
-			http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return err
+		file, responseErr = os.Open(this.bodyFilePath)
+		if responseErr == nil {
+			defer file.Close()
+			var info os.FileInfo
+			info, responseErr = file.Stat()
+			if responseErr == nil {
+				if !info.Mode().IsRegular() {
+					responseErr = fmt.Errorf("vnix: %q is not a regular file", this.bodyFilePath)
+				} else {
+					fileSize = info.Size()
+				}
+			}
 		}
-		defer file.Close()
-		info, err := file.Stat()
-
-		if err != nil {
-			http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return err
-		}
-		fileSize = info.Size()
 	}
-	header := writer.Header()
+	if responseErr != nil {
+		this.statusCode = http.StatusInternalServerError
+		this.SetText(http.StatusText(http.StatusInternalServerError) + "\n")
+		body = []byte(this.bodyDataText)
+		file = nil
+		bodyAllowed = true
+	}
 
-	for key, values := range http.Header(this.resHeader) {
-		header[http.CanonicalHeaderKey(key)] = append([]string(nil), values...)
+	header := writer.Header()
+	if bodyAllowed {
+		contentLength := int64(len(body))
+		if file != nil {
+			contentLength = fileSize
+		}
+		header.Set("Content-Length", strconv.FormatInt(contentLength, 10))
+		if len(body) > 0 && header.Get("Content-Type") == "" {
+			header.Set("Content-Type", http.DetectContentType(body))
+		}
+	}
+	// Explicit response headers override body defaults regardless of setter order.
+	for _, responseHeader := range []THeader{this.resHeaderDefault, this.resHeader} {
+		for key, values := range responseHeader {
+			header[http.CanonicalHeaderKey(key)] = append([]string(nil), values...)
+		}
+	}
+	// A fallback error body replaces the original response and its length.
+	if responseErr != nil {
+		header.Set("Content-Length", strconv.Itoa(len(body)))
 	}
 	for _, cookie := range this.resCookies {
 		if cookie != nil {
 			http.SetCookie(writer, cookie)
 		}
 	}
-	bodyAllowed := this.statusCode >= 200 && this.statusCode != http.StatusNoContent && this.statusCode != http.StatusNotModified
-
 	if this.statusCode < 200 || this.statusCode == http.StatusNoContent {
 		header.Del("Content-Length")
-	} else if bodyAllowed {
-		contentLength := int64(len(body))
-
-		if file != nil {
-			contentLength = fileSize
-		}
-		header.Set("Content-Length", strconv.FormatInt(contentLength, 10))
-
-		if len(body) > 0 && header.Get("Content-Type") == "" {
-			header.Set("Content-Type", http.DetectContentType(body))
-		}
+	} else if this.statusCode == http.StatusResetContent {
+		header.Set("Content-Length", "0")
 	}
 	writer.WriteHeader(this.statusCode)
 
 	if this.httpRequest.Method == http.MethodHead || !bodyAllowed {
-		return nil
+		return responseErr
 	}
 	if file != nil {
 		_, err := io.Copy(writer, file)
 		return err
 	}
 	if len(body) > 0 {
-		_, err := writer.Write(body)
-		return err
+		if _, err := writer.Write(body); err != nil {
+			return err
+		}
 	}
-	return nil
+	return responseErr
 }

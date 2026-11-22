@@ -40,6 +40,26 @@ func TestRoutePrefixesAndAllowedMethods(t *testing.T) {
 	}
 }
 
+func TestAllowIncludesBacktrackingAlternatives(t *testing.T) {
+	app := New()
+	handler := func(ctx *QContext) { ctx.SetText("ok") }
+	app.GET("/users/new", handler)
+	app.POST("/users/:id", handler)
+	app.GET("/users/:id", handler)
+	app.Handle("DELETE", "/users/:id", nil)
+	httpHandler := &qHttpHandler{rootNode: app.QNode}
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		response := performRequest(httpHandler, method, "/users/new")
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s status = %d", method, response.Code)
+		}
+	}
+	response := performRequest(httpHandler, http.MethodPut, "/users/new")
+	if response.Code != http.StatusMethodNotAllowed || response.Header().Get("Allow") != "GET, POST" {
+		t.Fatalf("405 response = (%d, %v)", response.Code, response.Header())
+	}
+}
+
 func TestFileServerHeadOverHTTP(t *testing.T) {
 	directory := t.TempDir()
 	if err := os.WriteFile(filepath.Join(directory, "hello.txt"), []byte("hello"), 0600); err != nil {

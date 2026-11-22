@@ -10,7 +10,7 @@ type qHttpHandler struct {
 	rootNode *QNode
 }
 func (this *qHttpHandler) ServeHTTP(hRes http.ResponseWriter, hReq *http.Request) {
-	currentNode, handlerFunc, paramMap := this.rootNode.getMethodHandler(hReq.Method, hReq.URL.Path)
+	currentNode, handlerFunc, paramMap, allowedMethods := this.rootNode.getMethodHandler(hReq.Method, hReq.URL.Path)
 
 	if handlerFunc != nil {
 		ctx := newContext(hReq, hRes, paramMap)
@@ -18,15 +18,6 @@ func (this *qHttpHandler) ServeHTTP(hRes http.ResponseWriter, hReq *http.Request
 		ctx.Next()
 		ctx.send()
 		return
-	}
-	var allowedMethods []string
-
-	if currentNode != nil {
-		for method, handler := range currentNode.handlerFuncMap {
-			if handler != nil {
-				allowedMethods = append(allowedMethods, method)
-			}
-		}
 	}
 	if len(allowedMethods) == 0 {
 		http.Error(hRes, "404 Not Found", http.StatusNotFound)

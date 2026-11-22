@@ -288,6 +288,50 @@ func TestStaticRejectsUsedRouteNode(t *testing.T) {
 		})
 	}
 }
+func TestFileServerRejectsHandlerRegistration(t *testing.T) {
+	for _, mode := range []string{"root", "group", "file server node"} {
+		for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+			t.Run(mode+"/"+method, func(t *testing.T) {
+				directory := t.TempDir()
+				if err := os.WriteFile(filepath.Join(directory, "file.txt"), []byte("asset"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				app := New()
+				prefix := ""
+				if mode == "group" {
+					prefix = "/api"
+				}
+				group := app.Group(prefix)
+				fileServer := group.FileServer("/assets", directory)
+				func() {
+					defer func() {
+						if recover() == nil {
+							t.Fatal("registering a handler on a file server route should panic")
+						}
+					}()
+					handler := func(ctx *QContext) { ctx.SetText("index") }
+					if mode == "file server node" {
+						fileServer.Handle(method, "", handler)
+					} else {
+						group.Handle(method, "/assets", handler)
+					}
+				}()
+				fileServer.UseMiddleware(func(ctx *QContext) { ctx.SetHeader("X-Static", "yes") })
+				for _, requestMethod := range []string{http.MethodGet, http.MethodHead} {
+					response := performRequest(&qHttpHandler{rootNode: app.QNode}, requestMethod, prefix+"/assets/file.txt")
+					wantBody := "asset"
+					if requestMethod == http.MethodHead {
+						wantBody = ""
+					}
+					if response.Code != http.StatusOK || response.Body.String() != wantBody || response.Header().Get("X-Static") != "yes" {
+						t.Fatalf("file server changed after rejected registration: (%d, %q, %v)", response.Code, response.Body.String(), response.Header())
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestFileServerRejectsDynamicFinalSegment(t *testing.T) {
 	for _, routePath := range []string{"/assets/:name", "/assets/*path"} {
 		t.Run(routePath, func(t *testing.T) {
@@ -415,7 +459,7 @@ func TestHandleIgnoresEmptyMethod(t *testing.T) {
 func TestUnknownDynamicNodeTypeDoesNotMatch(t *testing.T) {
 	root := newNode("", vNodeTypeStatic)
 	root.dynamicNode = newNode("unknown", tNodeType(99))
-	if node, handler, params := root.getMethodHandler(http.MethodGet, "/value"); node != nil || handler != nil || params != nil {
+	if node, handler, params, methods := root.getMethodHandler(http.MethodGet, "/value"); node != nil || handler != nil || params != nil || len(methods) != 0 {
 		t.Fatalf("unknown node match = (%#v, %#v, %#v), want no match", node, handler, params)
 	}
 }
